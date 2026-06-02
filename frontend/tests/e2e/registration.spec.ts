@@ -27,8 +27,8 @@ test.describe("Theme Toggle", () => {
 });
 
 test.describe("Responsive Validation", () => {
-  test("layout adapts on mobile viewport", async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 667 });
+  test("layout adapts on minimum mobile viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
     await page.goto("/register");
 
     await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();

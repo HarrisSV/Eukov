@@ -27,6 +27,16 @@ type RegisterResult struct {
 	UserID uuid.UUID
 }
 
+type LoginInput struct {
+	Email    string `validate:"required,email"`
+	Password string `validate:"required,min=8"`
+}
+
+type LoginResult struct {
+	UserID uuid.UUID
+	Email  string
+}
+
 type PreferencesInput struct {
 	UserID uuid.UUID `validate:"required"`
 	Genres []string  `validate:"required,min=1,dive,required"`
@@ -57,6 +67,25 @@ func (s *UserService) Register(ctx context.Context, input RegisterInput) (*Regis
 	}
 
 	return &RegisterResult{UserID: user.ID}, nil
+}
+
+func (s *UserService) Login(ctx context.Context, input LoginInput) (*LoginResult, error) {
+	user, err := s.users.FindByEmail(ctx, input.Email)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return nil, ErrInvalidCredentials
+		}
+		return nil, err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password)); err != nil {
+		return nil, ErrInvalidCredentials
+	}
+
+	return &LoginResult{
+		UserID: user.ID,
+		Email:  user.Email,
+	}, nil
 }
 
 type GenreService struct {

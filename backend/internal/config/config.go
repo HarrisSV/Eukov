@@ -14,7 +14,7 @@ type Config struct {
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		DatabaseURL:    getEnv("DATABASE_URL", "postgres://eukov:eukov_secret@localhost:5432/eukov?sslmode=disable"),
+		DatabaseURL:    getEnv("DATABASE_URL", ""),
 		Port:           getEnv("BACKEND_PORT", "8080"),
 		UploadBasePath: getEnv("UPLOAD_BASE_PATH", "./uploads"),
 		CORSOrigin:     getEnv("CORS_ORIGIN", "http://localhost:3000"),

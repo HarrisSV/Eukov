@@ -8,20 +8,14 @@ import { z } from "zod";
 import { api, ApiError } from "@/services/api";
 import { useUserStore } from "@/store/userStore";
 
-const registerSchema = z
-  .object({
-    email: z.string().email("Enter a valid email address"),
-    password: z.string().min(8, "Password must be at least 8 characters"),
-    confirmPassword: z.string(),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
+const loginSchema = z.object({
+  email: z.string().email("Enter a valid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
 
-type RegisterFormValues = z.infer<typeof registerSchema>;
+type LoginFormValues = z.infer<typeof loginSchema>;
 
-export function RegisterForm() {
+export function LoginForm() {
   const router = useRouter();
   const setUser = useUserStore((state) => state.setUser);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -30,21 +24,26 @@ export function RegisterForm() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<RegisterFormValues>({
-    resolver: zodResolver(registerSchema),
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
   });
 
-  const onSubmit = async (values: RegisterFormValues) => {
+  const onSubmit = async (values: LoginFormValues) => {
     setSubmitError(null);
     try {
-      const result = await api.register(values.email, values.password);
-      setUser(result.userId, values.email);
-      router.push("/onboarding/genres");
+      const result = await api.login(values.email, values.password);
+      setUser(result.userId, result.email);
+      const existingPrefs = await api.getPreferences(result.userId);
+      if (existingPrefs.genres.length === 0) {
+        router.push("/onboarding/genres");
+        return;
+      }
+      router.push("/dashboard");
     } catch (error) {
       if (error instanceof ApiError) {
         setSubmitError(error.message);
       } else {
-        setSubmitError("Registration failed. Please try again.");
+        setSubmitError("Login failed. Please try again.");
       }
     }
   };
@@ -56,11 +55,11 @@ export function RegisterForm() {
       noValidate
     >
       <div>
-        <label htmlFor="email" className="mb-1 block text-sm font-medium">
+        <label htmlFor="login-email" className="mb-1 block text-sm font-medium">
           Email
         </label>
         <input
-          id="email"
+          id="login-email"
           type="email"
           autoComplete="email"
           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
@@ -74,40 +73,19 @@ export function RegisterForm() {
       </div>
 
       <div>
-        <label htmlFor="password" className="mb-1 block text-sm font-medium">
+        <label htmlFor="login-password" className="mb-1 block text-sm font-medium">
           Password
         </label>
         <input
-          id="password"
+          id="login-password"
           type="password"
-          autoComplete="new-password"
+          autoComplete="current-password"
           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
           {...register("password")}
         />
         {errors.password && (
           <p className="mt-1 text-sm text-danger" role="alert">
             {errors.password.message}
-          </p>
-        )}
-      </div>
-
-      <div>
-        <label
-          htmlFor="confirmPassword"
-          className="mb-1 block text-sm font-medium"
-        >
-          Confirm Password
-        </label>
-        <input
-          id="confirmPassword"
-          type="password"
-          autoComplete="new-password"
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
-          {...register("confirmPassword")}
-        />
-        {errors.confirmPassword && (
-          <p className="mt-1 text-sm text-danger" role="alert">
-            {errors.confirmPassword.message}
           </p>
         )}
       </div>
@@ -123,7 +101,7 @@ export function RegisterForm() {
         disabled={isSubmitting}
         className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {isSubmitting ? "Creating account..." : "Create Account"}
+        {isSubmitting ? "Signing in..." : "Login"}
       </button>
     </form>
   );

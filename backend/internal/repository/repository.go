@@ -24,6 +24,10 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 }
 
 func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
+	if user.ID == uuid.Nil {
+		user.ID = uuid.New()
+	}
+
 	existing, err := r.FindByEmail(ctx, user.Email)
 	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		return err

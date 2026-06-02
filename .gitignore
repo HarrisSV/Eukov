@@ -22,9 +22,12 @@ backend/uploads/*
 
 # Test & coverage
 coverage/
+**/coverage/
 *.out
 test-results/
+**/test-results/
 playwright-report/
+**/playwright-report/
 
 # IDE
 .idea/

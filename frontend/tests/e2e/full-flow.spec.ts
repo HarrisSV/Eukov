@@ -29,4 +29,24 @@ test.describe("Full Registration Flow", () => {
     await expect(page.getByText("Healthy")).toBeVisible();
     await expect(page.getByText("Complete", { exact: true })).toBeVisible();
   });
+
+  test("created account can login from the same register page", async ({ page }) => {
+    const email = `login-${Date.now()}@example.com`;
+    const password = "password123";
+
+    await page.goto("/register");
+    await page.locator("#email").fill(email);
+    await page.locator("#password").fill(password);
+    await page.locator("#confirmPassword").fill(password);
+    await page.getByRole("button", { name: "Create Account" }).click();
+    await expect(page).toHaveURL(/\/onboarding\/genres/, { timeout: 15_000 });
+
+    await page.goto("/register");
+    await page.getByRole("tab", { name: "Login" }).click();
+    await page.locator("#login-email").fill(email);
+    await page.locator("#login-password").fill(password);
+    await page.getByRole("button", { name: "Login" }).click();
+
+    await expect(page).toHaveURL(/\/onboarding\/genres|\/dashboard/, { timeout: 15_000 });
+  });
 });

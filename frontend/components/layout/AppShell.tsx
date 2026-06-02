@@ -76,7 +76,7 @@ export function MobileNav() {
           <Link
             key={item.href}
             href={item.href}
-            className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+            className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
               active
                 ? "bg-background text-foreground"
                 : "text-muted hover:text-foreground"

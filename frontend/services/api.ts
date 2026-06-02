@@ -44,6 +44,12 @@ export interface RegisterResponse {
   userId: string;
 }
 
+export interface LoginResponse {
+  success: boolean;
+  userId: string;
+  email: string;
+}
+
 export interface Genre {
   id: string;
   name: string;
@@ -62,6 +68,12 @@ export const api = {
 
   register: (email: string, password: string) =>
     request<RegisterResponse>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+
+  login: (email: string, password: string) =>
+    request<LoginResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
