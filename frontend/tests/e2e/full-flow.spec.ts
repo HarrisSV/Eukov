@@ -1,0 +1,32 @@
+import { expect, test } from "@playwright/test";
+
+test.describe("Full Registration Flow", () => {
+  test("register, select genres, and land on dashboard", async ({ page }) => {
+    const email = `reader-${Date.now()}@example.com`;
+    const password = "password123";
+
+    await page.goto("/register");
+
+    await page.locator("#email").fill(email);
+    await page.locator("#password").fill(password);
+    await page.locator("#confirmPassword").fill(password);
+    await page.getByRole("button", { name: "Create Account" }).click();
+
+    await expect(page).toHaveURL(/\/onboarding\/genres/, { timeout: 15_000 });
+    await expect(
+      page.getByRole("heading", { name: "Choose your interests" }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Philosophy", pressed: false }).click();
+    await page.getByRole("button", { name: "History", pressed: false }).click();
+    await page.getByRole("button", { name: "Continue to Dashboard" }).click();
+
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Reader Dashboard" })).toBeVisible();
+    await expect(page.getByText(`Welcome back, ${email}`)).toBeVisible();
+    await expect(page.getByText("Philosophy")).toBeVisible();
+    await expect(page.getByText("History")).toBeVisible();
+    await expect(page.getByText("Healthy")).toBeVisible();
+    await expect(page.getByText("Complete", { exact: true })).toBeVisible();
+  });
+});

@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Build/backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: eukov
+          POSTGRES_PASSWORD: eukov_secret
+          POSTGRES_DB: eukov
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eukov -d eukov"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Run migrations
+        run: |
+          docker run --rm --network host \
+            -v ${{ github.workspace }}/Build/backend/migrations:/migrations \
+            migrate/migrate:v4.18.1 \
+            -path=/migrations \
+            -database="postgres://eukov:eukov_secret@localhost:5432/eukov?sslmode=disable" up
+
+      - name: Backend tests
+        env:
+          DATABASE_URL: postgres://eukov:eukov_secret@localhost:5432/eukov?sslmode=disable
+        run: go test ./... -cover
+
+      - name: Backend build
+        run: go build ./cmd/server
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Build/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Build/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
