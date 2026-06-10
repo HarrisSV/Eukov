@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/eukov/backend/internal/api"
+	"github.com/eukov/backend/internal/auth"
 	"github.com/eukov/backend/internal/config"
 	"github.com/eukov/backend/internal/middleware"
 	"github.com/eukov/backend/internal/repository"
@@ -35,6 +38,11 @@ func main() {
 		zapLogger.Fatal("database connection failed", zap.Error(err))
 	}
 
+	ctx := context.Background()
+	if err := service.BootstrapSuperAdmin(ctx, repository.NewUserRepository(db), cfg.SuperAdminEmail, cfg.SuperAdminPassword); err != nil {
+		zapLogger.Fatal("super admin bootstrap failed", zap.Error(err))
+	}
+
 	storageSvc := service.NewStorageService(cfg.UploadBasePath)
 	if err := storageSvc.EnsureDirectories(); err != nil {
 		zapLogger.Fatal("storage setup failed", zap.Error(err))
@@ -43,12 +51,58 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	genreRepo := repository.NewGenreRepository(db)
 	prefRepo := repository.NewPreferenceRepository(db)
+	accessKeyRepo := repository.NewAccessKeyRepository(db)
+	authorAppRepo := repository.NewAuthorApplicationRepository(db)
+	auditRepo := repository.NewAuditLogRepository(db)
+	refreshRepo := repository.NewRefreshTokenRepository(db)
 
+	jwtSvc := auth.NewJWTService(cfg.JWTSecret, 15, 7)
 	userSvc := service.NewUserService(userRepo)
 	genreSvc := service.NewGenreService(genreRepo)
 	prefSvc := service.NewPreferenceService(userRepo, genreRepo, prefRepo)
+	sessionSvc := service.NewAuthSessionService(userRepo, refreshRepo, jwtSvc)
+	auditSvc := service.NewAuditService(auditRepo)
+	accessKeySvc := service.NewAccessKeyService(accessKeyRepo, userRepo, auditSvc)
+	authorAppSvc := service.NewAuthorApplicationService(authorAppRepo, userRepo, auditSvc)
 
-	handler := api.NewHandler(userSvc, genreSvc, prefSvc, storageSvc)
+	docketRepo := repository.NewDocketRepository(db)
+	documentRepo := repository.NewDocumentRepository(db)
+	tagRepo := repository.NewDocumentTagRepository(db)
+	unpublishRepo := repository.NewUnpublishRepository(db)
+	fileSvc := service.NewDocumentFileService(cfg.UploadBasePath)
+	metadataRepo := repository.NewDocumentMetadataRepository(db)
+	docketItemRepo := repository.NewDocketItemRepository(db)
+	publishAuditRepo := repository.NewPublishAuditEventRepository(db)
+	documentSvc := service.NewDocumentService(
+		docketRepo,
+		documentRepo,
+		tagRepo,
+		genreRepo,
+		metadataRepo,
+		docketItemRepo,
+		fileSvc,
+		unpublishRepo,
+		publishAuditRepo,
+		auditSvc,
+	)
+	docketSvc := service.NewDocketService(docketItemRepo, documentRepo, tagRepo, genreRepo, metadataRepo)
+	adminActivitySvc := service.NewAdminActivityService(userRepo, documentRepo, publishAuditRepo, unpublishRepo)
+
+	handler := api.NewHandler(
+		userSvc,
+		genreSvc,
+		prefSvc,
+		storageSvc,
+		sessionSvc,
+		accessKeySvc,
+		authorAppSvc,
+		auditSvc,
+		documentSvc,
+		docketSvc,
+		adminActivitySvc,
+	)
+
+	authLimiter := middleware.NewRateLimiter(20, time.Minute)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
@@ -57,7 +111,7 @@ func main() {
 	r.Use(middleware.Logger(zapLogger))
 	r.Use(middleware.CORS(cfg.CORSOrigin))
 
-	handler.RegisterRoutes(r)
+	handler.RegisterRoutes(r, jwtSvc, authLimiter)
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	zapLogger.Info("server starting", zap.String("addr", addr))

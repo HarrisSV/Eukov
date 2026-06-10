@@ -1,13 +1,18 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
-import { api, formatGenreLabel } from "@/services/api";
-import { useUserStore } from "@/store/userStore";
+import { AuthorApplicationForm } from "@/features/auth/AuthorApplicationForm";
+import { AccessKeyForm } from "@/features/auth/AccessKeyForm";
+import { AuthorReviewQueue } from "@/features/admin/AuthorReviewQueue";
+import { SuperAdminPanel } from "@/features/admin/SuperAdminPanel";
+import { api, formatGenreLabel, formatRoleLabel } from "@/services/api";
+import { useAuthStore } from "@/store/authStore";
+import { roles } from "@/lib/roles";
 
 export function DashboardContent() {
-  const userId = useUserStore((state) => state.userId);
-  const email = useUserStore((state) => state.email);
+  const user = useAuthStore((state) => state.user);
 
   const healthQuery = useQuery({
     queryKey: ["health"],
@@ -16,51 +21,49 @@ export function DashboardContent() {
   });
 
   const preferencesQuery = useQuery({
-    queryKey: ["preferences", userId],
-    queryFn: () => api.getPreferences(userId!),
-    enabled: Boolean(userId),
+    queryKey: ["preferences", user?.id],
+    queryFn: () => api.getPreferences(user!.id),
+    enabled: Boolean(user?.id),
   });
 
   const isHealthy = healthQuery.data?.status === "healthy";
+  const role = user?.role ?? roles.Reader;
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Reader Dashboard</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          {role === roles.SuperAdmin
+            ? "Super Admin Dashboard"
+            : role === roles.Admin
+              ? "Admin Dashboard"
+              : "Reader Dashboard"}
+        </h1>
         <p className="mt-2 text-muted">
-          Your EUKOV foundation workspace is ready.
+          Phase 2 access layer — authentication, RBAC, and governance.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-2">
         <Card title="Welcome">
           <p className="text-foreground">
-            {email ? `Welcome back, ${email}` : "Welcome to EUKOV"}
+            {user?.email ? `Welcome back, ${user.email}` : "Welcome to EUKOV"}
           </p>
           <p className="mt-2 text-sm text-muted">
-            Role: Reader · Phase 1 foundation setup complete
+            Role: {formatRoleLabel(role)}
           </p>
         </Card>
 
-        <Card title="Registration Metrics">
-          <dl className="space-y-2 text-sm">
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted">Account status</dt>
-              <dd className="font-medium text-success">Active</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted">User ID</dt>
-              <dd className="truncate font-mono text-xs">{userId ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted">Onboarding</dt>
-              <dd className="font-medium text-foreground">
-                {(preferencesQuery.data?.genres.length ?? 0) > 0
-                  ? "Complete"
-                  : "Pending"}
-              </dd>
-            </div>
-          </dl>
+        <Card title="Profile & Security">
+          <p className="text-sm text-muted">
+            Manage account security and session settings.
+          </p>
+          <Link
+            href="/dashboard/settings"
+            className="mt-3 inline-block text-sm font-medium text-accent hover:underline"
+          >
+            Open security settings →
+          </Link>
         </Card>
 
         <Card title="Questionnaire Summary">
@@ -80,9 +83,7 @@ export function DashboardContent() {
             </ul>
           ) : (
             !preferencesQuery.isLoading && (
-              <p className="text-sm text-muted">
-                No genre preferences saved yet.
-              </p>
+              <p className="text-sm text-muted">No genre preferences saved yet.</p>
             )
           )}
         </Card>
@@ -103,11 +104,29 @@ export function DashboardContent() {
                   : "Degraded"}
             </span>
           </div>
-          <p className="mt-2 text-sm text-muted">
-            Backend health endpoint: /api/v1/health
-          </p>
         </Card>
       </div>
+
+      {role === roles.Reader && (
+        <Card title="Apply for Author Status">
+          <AuthorApplicationForm />
+        </Card>
+      )}
+
+      {roles.hasAtLeast(role, roles.Admin) && (
+        <AuthorReviewQueue />
+      )}
+
+      {role === roles.SuperAdmin && <SuperAdminPanel />}
+
+      {roles.hasAtLeast(role, roles.Reader) && role !== roles.SuperAdmin && (
+        <Card title="Admin Access Key">
+          <p className="mb-4 text-sm text-muted">
+            Redeem a single-use key from your Super Admin to become an Admin.
+          </p>
+          <AccessKeyForm />
+        </Card>
+      )}
     </div>
   );
 }

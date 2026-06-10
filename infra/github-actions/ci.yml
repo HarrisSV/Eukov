@@ -74,3 +74,70 @@ jobs:
       - name: Build
         working-directory: Build/frontend
         run: npm run build
+
+  e2e-phase3:
+    runs-on: ubuntu-latest
+    needs: [backend]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: eukov
+          POSTGRES_PASSWORD: eukov_secret
+          POSTGRES_DB: eukov
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eukov -d eukov"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Build/frontend/package-lock.json
+
+      - name: Run migrations
+        run: |
+          docker run --rm --network host \
+            -v ${{ github.workspace }}/Build/backend/migrations:/migrations \
+            migrate/migrate:v4.18.1 \
+            -path=/migrations \
+            -database="postgres://eukov:eukov_secret@localhost:5432/eukov?sslmode=disable" up
+
+      - name: Start backend
+        working-directory: Build/backend
+        env:
+          DATABASE_URL: postgres://eukov:eukov_secret@localhost:5432/eukov?sslmode=disable
+          JWT_SECRET: local-dev-jwt-secret-key-32chars-minimum!
+          SUPER_ADMIN_EMAIL: superadmin@eukov.local
+          SUPER_ADMIN_PASSWORD: SuperAdmin123!
+          CORS_ORIGIN: http://localhost:3000
+        run: |
+          go build -o /tmp/eukov-server ./cmd/server
+          /tmp/eukov-server &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080/api/v1/health && break
+            sleep 1
+          done
+
+      - name: Install Playwright
+        working-directory: Build/frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Phase 3 E2E
+        working-directory: Build/frontend
+        env:
+          CI: "true"
+        run: npx playwright test tests/e2e/phase3-docket.spec.ts --project=chromium

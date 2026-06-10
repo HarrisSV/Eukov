@@ -1,0 +1,1 @@
+-- No-op: super admin rows are managed by application bootstrap.

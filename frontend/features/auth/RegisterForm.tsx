@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { api, ApiError } from "@/services/api";
+import { api, ApiError, NetworkError } from "@/services/api";
+import { useAuthStore } from "@/store/authStore";
 import { useUserStore } from "@/store/userStore";
 
 const registerSchema = z
@@ -24,6 +25,7 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 export function RegisterForm() {
   const router = useRouter();
   const setUser = useUserStore((state) => state.setUser);
+  const setSession = useAuthStore((state) => state.setSession);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
@@ -37,11 +39,15 @@ export function RegisterForm() {
   const onSubmit = async (values: RegisterFormValues) => {
     setSubmitError(null);
     try {
-      const result = await api.register(values.email, values.password);
-      setUser(result.userId, values.email);
+      await api.register(values.email, values.password);
+      const session = await api.login(values.email, values.password);
+      setSession(session.accessToken, session.refreshToken, session.user);
+      setUser(session.user.id, session.user.email);
       router.push("/onboarding/genres");
     } catch (error) {
       if (error instanceof ApiError) {
+        setSubmitError(error.message);
+      } else if (error instanceof NetworkError) {
         setSubmitError(error.message);
       } else {
         setSubmitError("Registration failed. Please try again.");

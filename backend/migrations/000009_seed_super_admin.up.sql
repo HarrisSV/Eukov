@@ -1,0 +1,2 @@
+-- Super admin is provisioned at runtime from SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD.
+-- This migration is intentionally idempotent and does not insert credentials.

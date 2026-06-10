@@ -10,8 +10,18 @@ func TestLoadRequiresDatabaseURL(t *testing.T) {
 	}
 }
 
+func TestLoadRequiresJWTSecret(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost:5432/eukov?sslmode=disable")
+	t.Setenv("JWT_SECRET", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when JWT_SECRET is empty")
+	}
+}
+
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://localhost:5432/eukov?sslmode=disable")
+	t.Setenv("JWT_SECRET", "test-secret-key-32chars-minimum!")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("load config: %v", err)

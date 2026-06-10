@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { api, ApiError } from "@/services/api";
+import { api, ApiError, NetworkError } from "@/services/api";
+import { useAuthStore } from "@/store/authStore";
 import { useUserStore } from "@/store/userStore";
 
 const loginSchema = z.object({
@@ -17,6 +18,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
   const router = useRouter();
+  const setSession = useAuthStore((state) => state.setSession);
   const setUser = useUserStore((state) => state.setUser);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -32,8 +34,9 @@ export function LoginForm() {
     setSubmitError(null);
     try {
       const result = await api.login(values.email, values.password);
-      setUser(result.userId, result.email);
-      const existingPrefs = await api.getPreferences(result.userId);
+      setSession(result.accessToken, result.refreshToken, result.user);
+      setUser(result.user.id, result.user.email);
+      const existingPrefs = await api.getPreferences(result.user.id);
       if (existingPrefs.genres.length === 0) {
         router.push("/onboarding/genres");
         return;
@@ -41,6 +44,8 @@ export function LoginForm() {
       router.push("/dashboard");
     } catch (error) {
       if (error instanceof ApiError) {
+        setSubmitError(error.message);
+      } else if (error instanceof NetworkError) {
         setSubmitError(error.message);
       } else {
         setSubmitError("Login failed. Please try again.");

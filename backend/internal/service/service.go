@@ -51,7 +51,7 @@ func NewUserService(users *repository.UserRepository) *UserService {
 }
 
 func (s *UserService) Register(ctx context.Context, input RegisterInput) (*RegisterResult, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcryptCost)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
@@ -67,6 +67,10 @@ func (s *UserService) Register(ctx context.Context, input RegisterInput) (*Regis
 	}
 
 	return &RegisterResult{UserID: user.ID}, nil
+}
+
+func (s *UserService) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
+	return s.users.FindByID(ctx, id)
 }
 
 func (s *UserService) Login(ctx context.Context, input LoginInput) (*LoginResult, error) {

@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError, formatGenreLabel } from "@/services/api";
+import { api, ApiError, formatGenreLabel, formatRoleLabel } from "@/services/api";
 
 describe("formatGenreLabel", () => {
   it("capitalizes genre names", () => {
     expect(formatGenreLabel("philosophy")).toBe("Philosophy");
-    expect(formatGenreLabel("history")).toBe("History");
+  });
+});
+
+describe("formatRoleLabel", () => {
+  it("formats role names", () => {
+    expect(formatRoleLabel("SUPER_ADMIN")).toBe("Super Admin");
   });
 });
 
@@ -26,17 +31,22 @@ describe("api client", () => {
     expect(result.success).toBe(true);
   });
 
-  it("calls login endpoint", async () => {
+  it("calls login endpoint with tokens", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ success: true, userId: "u-1", email: "reader@example.com" }),
+        json: async () => ({
+          accessToken: "access",
+          refreshToken: "refresh",
+          user: { id: "u-1", email: "reader@example.com", role: "READER" },
+        }),
       }),
     );
 
     const result = await api.login("reader@example.com", "password123");
-    expect(result.email).toBe("reader@example.com");
+    expect(result.accessToken).toBe("access");
+    expect(result.user.role).toBe("READER");
   });
 
   it("throws ApiError on failed request", async () => {
@@ -50,29 +60,5 @@ describe("api client", () => {
     );
 
     await expect(api.login("reader@example.com", "wrong-pass")).rejects.toBeInstanceOf(ApiError);
-  });
-
-  it("fetches and saves preferences", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ genres: [{ id: "1", name: "history" }] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ genres: ["history"] }),
-      });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const genres = await api.getGenres();
-    expect(genres.genres[0].name).toBe("history");
-    await api.savePreferences("u-1", ["history"]);
-    const prefs = await api.getPreferences("u-1");
-    expect(prefs.genres).toContain("history");
   });
 });

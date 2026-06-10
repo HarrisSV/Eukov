@@ -4,7 +4,10 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/eukov/backend/internal/auth"
+	"github.com/eukov/backend/internal/middleware"
 	"github.com/eukov/backend/internal/repository"
+	"github.com/eukov/backend/internal/roles"
 	"github.com/eukov/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -16,7 +19,14 @@ type Handler struct {
 	genres      *service.GenreService
 	preferences *service.PreferenceService
 	storage     *service.StorageService
-	validate    *validator.Validate
+	sessions    *service.AuthSessionService
+	accessKeys  *service.AccessKeyService
+	authorApps  *service.AuthorApplicationService
+	audit       *service.AuditService
+	documents     *service.DocumentService
+	docket        *service.DocketService
+	adminActivity *service.AdminActivityService
+	validate      *validator.Validate
 }
 
 func NewHandler(
@@ -24,25 +34,81 @@ func NewHandler(
 	genres *service.GenreService,
 	preferences *service.PreferenceService,
 	storage *service.StorageService,
+	sessions *service.AuthSessionService,
+	accessKeys *service.AccessKeyService,
+	authorApps *service.AuthorApplicationService,
+	audit *service.AuditService,
+	documents *service.DocumentService,
+	docket *service.DocketService,
+	adminActivity *service.AdminActivityService,
 ) *Handler {
 	return &Handler{
-		users:       users,
-		genres:      genres,
-		preferences: preferences,
-		storage:     storage,
-		validate:    validator.New(),
+		users:         users,
+		genres:        genres,
+		preferences:   preferences,
+		storage:       storage,
+		sessions:      sessions,
+		accessKeys:    accessKeys,
+		authorApps:    authorApps,
+		audit:         audit,
+		documents:     documents,
+		docket:        docket,
+		adminActivity: adminActivity,
+		validate:      validator.New(),
 	}
 }
 
-func (h *Handler) RegisterRoutes(r *gin.Engine) {
+func (h *Handler) RegisterRoutes(r *gin.Engine, jwtSvc *auth.JWTService, authLimiter *middleware.RateLimiter) {
 	v1 := r.Group("/api/v1")
 	{
 		v1.GET("/health", h.Health)
-		v1.POST("/auth/register", h.Register)
-		v1.POST("/auth/login", h.Login)
+		v1.POST("/auth/register", authLimiter.Middleware(), h.Register)
+		v1.POST("/auth/login", authLimiter.Middleware(), h.Login)
+		v1.POST("/auth/refresh", authLimiter.Middleware(), h.Refresh)
 		v1.GET("/genres", h.GetGenres)
-		v1.POST("/user/preferences", h.SavePreferences)
-		v1.GET("/user/:userId/preferences", h.GetPreferences)
+
+		protected := v1.Group("")
+		protected.Use(middleware.Authenticate(h.sessions, jwtSvc))
+		{
+			protected.POST("/auth/logout", h.Logout)
+			protected.GET("/auth/me", h.Me)
+			protected.POST("/user/preferences", h.SavePreferences)
+			protected.GET("/user/:userId/preferences", h.GetPreferences)
+
+			reader := protected.Group("")
+			reader.Use(middleware.RequireRole(roles.Reader))
+			reader.POST("/author-applications", h.SubmitAuthorApplication)
+			reader.POST("/access-keys/consume", h.ConsumeAccessKey)
+			reader.GET("/docket", h.GetDocketWorkspace)
+
+			admin := protected.Group("/admin")
+			admin.Use(middleware.RequireRole(roles.Admin))
+			admin.GET("/author-applications", h.ListAuthorApplications)
+			admin.POST("/author-applications/:id/approve", h.ApproveAuthorApplication)
+			admin.POST("/author-applications/:id/reject", h.RejectAuthorApplication)
+			admin.GET("/unpublish-queue", h.ListUnpublishRequests)
+			admin.POST("/unpublish-queue/:id/approve", h.ApproveUnpublishRequest)
+			admin.POST("/unpublish-queue/:id/reject", h.RejectUnpublishRequest)
+			admin.GET("/author-activity", h.GetAdminAuthorActivity)
+
+			author := protected.Group("")
+			author.Use(middleware.RequireRole(roles.Author))
+			author.POST("/documents", h.CreateDocument)
+			author.PUT("/documents/:id", h.UpdateDocument)
+			author.DELETE("/documents/:id", h.DeleteDocument)
+			author.POST("/documents/:id/publish", h.PublishDocument)
+			author.POST("/documents/:id/unpublish-request", h.SubmitUnpublishRequest)
+			author.GET("/documents", h.ListDocuments)
+
+			protected.GET("/documents/:id", h.GetDocument)
+			protected.GET("/library/documents", h.ListDocuments)
+
+			superAdmin := protected.Group("")
+			superAdmin.Use(middleware.RequireRole(roles.SuperAdmin))
+			superAdmin.POST("/access-keys", h.GenerateAccessKey)
+			superAdmin.GET("/audit-logs", h.ListAuditLogs)
+			superAdmin.POST("/admin/documents/:id/review", h.SuperAdminReviewDraft)
+		}
 	}
 }
 
@@ -66,12 +132,6 @@ type registerRequest struct {
 type registerResponse struct {
 	Success bool   `json:"success"`
 	UserID  string `json:"userId"`
-}
-
-type loginResponse struct {
-	Success bool   `json:"success"`
-	UserID  string `json:"userId"`
-	Email   string `json:"email"`
 }
 
 func (h *Handler) Register(c *gin.Context) {
@@ -105,38 +165,6 @@ func (h *Handler) Register(c *gin.Context) {
 	})
 }
 
-func (h *Handler) Login(c *gin.Context) {
-	var req registerRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
-		return
-	}
-
-	if err := h.validate.Struct(req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	result, err := h.users.Login(c.Request.Context(), service.LoginInput{
-		Email:    req.Email,
-		Password: req.Password,
-	})
-	if err != nil {
-		if errors.Is(err, service.ErrInvalidCredentials) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid email or password"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "login failed"})
-		return
-	}
-
-	c.JSON(http.StatusOK, loginResponse{
-		Success: true,
-		UserID:  result.UserID.String(),
-		Email:   result.Email,
-	})
-}
-
 func (h *Handler) GetGenres(c *gin.Context) {
 	genres, err := h.genres.ListGenres(c.Request.Context())
 	if err != nil {
@@ -148,11 +176,17 @@ func (h *Handler) GetGenres(c *gin.Context) {
 }
 
 type preferencesRequest struct {
-	UserID string   `json:"userId" validate:"required,uuid"`
+	UserID string   `json:"userId" validate:"omitempty,uuid"`
 	Genres []string `json:"genres" validate:"required,min=1,dive,required"`
 }
 
 func (h *Handler) SavePreferences(c *gin.Context) {
+	authUser, ok := middleware.GetAuthUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	var req preferencesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
@@ -164,7 +198,19 @@ func (h *Handler) SavePreferences(c *gin.Context) {
 		return
 	}
 
-	userID, _ := uuid.Parse(req.UserID)
+	userID := authUser.ID
+	if req.UserID != "" {
+		parsed, err := uuid.Parse(req.UserID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+			return
+		}
+		if parsed != authUser.ID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "cannot modify another user's preferences"})
+			return
+		}
+		userID = parsed
+	}
 
 	if err := h.preferences.SavePreferences(c.Request.Context(), service.PreferencesInput{
 		UserID: userID,

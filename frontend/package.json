@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:phase3": "bash scripts/run-phase3-e2e.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

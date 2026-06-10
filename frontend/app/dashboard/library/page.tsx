@@ -1,14 +1,16 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { Card } from "@/components/ui/Card";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { LibraryCatalog } from "@/features/library/LibraryCatalog";
 
 export default function LibraryPage() {
   return (
     <AppShell>
-      <Card title="Library">
-        <p className="text-sm text-muted">
-          Library and subscriptions will be available in Phase 4.
-        </p>
-      </Card>
+      <AuthGuard>
+        <div className="flex flex-col gap-6">
+          <h1 className="text-3xl font-bold">Global Library</h1>
+          <LibraryCatalog />
+        </div>
+      </AuthGuard>
     </AppShell>
   );
 }

@@ -81,6 +81,18 @@ func (r *GenreRepository) FindAll(ctx context.Context) ([]models.Genre, error) {
 	return genres, result.Error
 }
 
+func (r *GenreRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.Genre, error) {
+	var genre models.Genre
+	result := r.db.WithContext(ctx).Where("id = ?", id).First(&genre)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, ErrGenreNotFound
+		}
+		return nil, result.Error
+	}
+	return &genre, nil
+}
+
 func (r *GenreRepository) FindByNames(ctx context.Context, names []string) ([]models.Genre, error) {
 	var genres []models.Genre
 	result := r.db.WithContext(ctx).Where("name IN ?", names).Find(&genres)

@@ -39,7 +39,7 @@ export function GenreQuestionnaire() {
     setIsSubmitting(true);
 
     try {
-      await api.savePreferences(userId, selected);
+      await api.savePreferences(selected);
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {

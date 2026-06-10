@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-import { useUserStore } from "@/store/userStore";
+import { api } from "@/services/api";
+import { useAuthStore } from "@/store/authStore";
+import { roles } from "@/lib/roles";
 
-const navItems = [
+const baseNav = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dashboard/docket", label: "Docket" },
   { href: "/dashboard/library", label: "Library" },
@@ -13,7 +15,23 @@ const navItems = [
 ];
 
 export function TopNav() {
-  const email = useUserStore((state) => state.email);
+  const router = useRouter();
+  const user = useAuthStore((state) => state.user);
+  const refreshToken = useAuthStore((state) => state.refreshToken);
+  const clearSession = useAuthStore((state) => state.clearSession);
+
+  const handleLogout = async () => {
+    try {
+      if (refreshToken) {
+        await api.logout(refreshToken);
+      }
+    } catch {
+      // Clear local session even if API call fails.
+    } finally {
+      clearSession();
+      router.push("/register");
+    }
+  };
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-background px-4 md:px-6">
@@ -22,17 +40,56 @@ export function TopNav() {
           EUKOV
         </span>
         <span className="hidden text-sm text-muted sm:inline">
-          Foundation Platform
+          Access Layer
         </span>
       </div>
       <div className="flex items-center gap-3">
-        {email && (
-          <span className="hidden text-sm text-muted md:inline">{email}</span>
+        {user?.email && (
+          <span className="hidden text-sm text-muted md:inline">
+            {user.email}
+          </span>
         )}
         <ThemeToggle />
+        {user && (
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            Logout
+          </button>
+        )}
       </div>
     </header>
   );
+}
+
+function NavLinks({ pathname }: { pathname: string }) {
+  const user = useAuthStore((state) => state.user);
+  const items = [...baseNav];
+  if (user && roles.hasAtLeast(user.role, roles.Admin)) {
+    items.splice(1, 0, { href: "/dashboard/admin", label: "Review Queue" });
+  }
+  if (user?.role === roles.SuperAdmin) {
+    items.splice(1, 0, { href: "/dashboard/super-admin", label: "Super Admin" });
+  }
+
+  return items.map((item) => {
+    const active = pathname === item.href;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+          active
+            ? "bg-background text-foreground"
+            : "text-muted hover:text-foreground"
+        }`}
+      >
+        {item.label}
+      </Link>
+    );
+  });
 }
 
 export function Sidebar() {
@@ -41,22 +98,7 @@ export function Sidebar() {
   return (
     <aside className="hidden w-56 shrink-0 border-r border-border bg-surface md:block">
       <nav aria-label="Main navigation" className="flex flex-col gap-1 p-4">
-        {navItems.map((item) => {
-          const active = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
-                active
-                  ? "bg-background text-foreground"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
+        <NavLinks pathname={pathname} />
       </nav>
     </aside>
   );
@@ -70,22 +112,7 @@ export function MobileNav() {
       aria-label="Mobile navigation"
       className="flex gap-1 overflow-x-auto border-b border-border bg-surface p-2 md:hidden"
     >
-      {navItems.map((item) => {
-        const active = pathname === item.href;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
-              active
-                ? "bg-background text-foreground"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
+      <NavLinks pathname={pathname} />
     </nav>
   );
 }

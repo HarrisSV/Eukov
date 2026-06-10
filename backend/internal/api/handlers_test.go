@@ -8,10 +8,13 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/eukov/backend/internal/auth"
 	"github.com/eukov/backend/internal/models"
 	"github.com/eukov/backend/internal/repository"
 	"github.com/eukov/backend/internal/service"
+	"github.com/eukov/backend/internal/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/driver/sqlite"
@@ -42,10 +45,22 @@ func setupTestHandler(t *testing.T) (*gin.Engine, *gorm.DB) {
 		t.Fatalf("seed genres: %v", err)
 	}
 
+	r := setupRouterFromDB(t, db)
+	return r, db
+}
+
+func setupRouterFromDB(t *testing.T, db *gorm.DB) *gin.Engine {
+	t.Helper()
+
 	userRepo := repository.NewUserRepository(db)
 	genreRepo := repository.NewGenreRepository(db)
 	prefRepo := repository.NewPreferenceRepository(db)
+	accessKeyRepo := repository.NewAccessKeyRepository(db)
+	authorAppRepo := repository.NewAuthorApplicationRepository(db)
+	auditRepo := repository.NewAuditLogRepository(db)
+	refreshRepo := repository.NewRefreshTokenRepository(db)
 
+	jwtSvc := auth.NewJWTService("test-secret-key-32chars-minimum!", 15, 7)
 	userSvc := service.NewUserService(userRepo)
 	genreSvc := service.NewGenreService(genreRepo)
 	prefSvc := service.NewPreferenceService(userRepo, genreRepo, prefRepo)
@@ -53,12 +68,53 @@ func setupTestHandler(t *testing.T) (*gin.Engine, *gorm.DB) {
 	if err := storageSvc.EnsureDirectories(); err != nil {
 		t.Fatalf("ensure directories: %v", err)
 	}
+	sessionSvc := service.NewAuthSessionService(userRepo, refreshRepo, jwtSvc)
+	auditSvc := service.NewAuditService(auditRepo)
+	accessKeySvc := service.NewAccessKeyService(accessKeyRepo, userRepo, auditSvc)
+	authorAppSvc := service.NewAuthorApplicationService(authorAppRepo, userRepo, auditSvc)
+	documentSvc := newTestDocumentService(t, db, auditSvc)
+	docketSvc := newTestDocketService(db)
+	adminActivitySvc := newTestAdminActivityService(db)
 
-	h := NewHandler(userSvc, genreSvc, prefSvc, storageSvc)
+	h := NewHandler(userSvc, genreSvc, prefSvc, storageSvc, sessionSvc, accessKeySvc, authorAppSvc, auditSvc, documentSvc, docketSvc, adminActivitySvc)
 	r := gin.New()
-	h.RegisterRoutes(r)
+	authLimiter := middleware.NewRateLimiter(1000, time.Minute)
+	h.RegisterRoutes(r, jwtSvc, authLimiter)
+	return r
+}
 
-	return r, db
+func newTestDocumentService(t *testing.T, db *gorm.DB, auditSvc *service.AuditService) *service.DocumentService {
+	return service.NewDocumentService(
+		repository.NewDocketRepository(db),
+		repository.NewDocumentRepository(db),
+		repository.NewDocumentTagRepository(db),
+		repository.NewGenreRepository(db),
+		repository.NewDocumentMetadataRepository(db),
+		repository.NewDocketItemRepository(db),
+		service.NewDocumentFileService(t.TempDir()),
+		repository.NewUnpublishRepository(db),
+		repository.NewPublishAuditEventRepository(db),
+		auditSvc,
+	)
+}
+
+func newTestDocketService(db *gorm.DB) *service.DocketService {
+	return service.NewDocketService(
+		repository.NewDocketItemRepository(db),
+		repository.NewDocumentRepository(db),
+		repository.NewDocumentTagRepository(db),
+		repository.NewGenreRepository(db),
+		repository.NewDocumentMetadataRepository(db),
+	)
+}
+
+func newTestAdminActivityService(db *gorm.DB) *service.AdminActivityService {
+	return service.NewAdminActivityService(
+		repository.NewUserRepository(db),
+		repository.NewDocumentRepository(db),
+		repository.NewPublishAuditEventRepository(db),
+		repository.NewUnpublishRepository(db),
+	)
 }
 
 func createSQLiteSchema(t *testing.T, db *gorm.DB) {
@@ -69,6 +125,7 @@ func createSQLiteSchema(t *testing.T, db *gorm.DB) {
 			email TEXT NOT NULL UNIQUE,
 			password_hash TEXT NOT NULL,
 			role TEXT NOT NULL,
+			token_version INTEGER NOT NULL DEFAULT 1,
 			created_at DATETIME,
 			updated_at DATETIME
 		);`,
@@ -90,9 +147,90 @@ func createSQLiteSchema(t *testing.T, db *gorm.DB) {
 		`CREATE TABLE documents (
 			id TEXT PRIMARY KEY,
 			docket_id TEXT NOT NULL,
+			author_id TEXT NOT NULL,
 			title TEXT NOT NULL,
 			file_path TEXT NOT NULL,
 			status TEXT NOT NULL,
+			genre_id TEXT,
+			published_at DATETIME,
+			created_at DATETIME,
+			updated_at DATETIME
+		);`,
+		`CREATE TABLE document_tags (
+			id TEXT PRIMARY KEY,
+			document_id TEXT NOT NULL,
+			tag TEXT NOT NULL,
+			created_at DATETIME
+		);`,
+		`CREATE TABLE unpublish_requests (
+			id TEXT PRIMARY KEY,
+			document_id TEXT NOT NULL,
+			author_id TEXT NOT NULL,
+			status TEXT NOT NULL,
+			justification TEXT NOT NULL,
+			actioned_by TEXT,
+			actioned_at DATETIME,
+			created_at DATETIME,
+			updated_at DATETIME
+		);`,
+		`CREATE TABLE document_metadata (
+			id TEXT PRIMARY KEY,
+			document_id TEXT NOT NULL UNIQUE,
+			genre_id TEXT NOT NULL,
+			summary TEXT NOT NULL DEFAULT '',
+			reading_time INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME
+		);`,
+		`CREATE TABLE docket_items (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			item_type TEXT NOT NULL,
+			item_id TEXT NOT NULL,
+			saved_at DATETIME
+		);`,
+		`CREATE TABLE publish_audit_events (
+			id TEXT PRIMARY KEY,
+			document_id TEXT,
+			actor_id TEXT,
+			event_type TEXT NOT NULL,
+			metadata TEXT NOT NULL DEFAULT '{}',
+			created_at DATETIME
+		);`,
+		`CREATE TABLE access_keys (
+			id TEXT PRIMARY KEY,
+			key_hash TEXT NOT NULL,
+			created_by TEXT NOT NULL,
+			consumed_by TEXT,
+			expires_at DATETIME NOT NULL,
+			consumed_at DATETIME,
+			status TEXT NOT NULL,
+			created_at DATETIME
+		);`,
+		`CREATE TABLE author_applications (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			qualifications TEXT NOT NULL,
+			experience TEXT NOT NULL,
+			status TEXT NOT NULL,
+			reviewed_by TEXT,
+			reviewed_at DATETIME,
+			created_at DATETIME,
+			updated_at DATETIME
+		);`,
+		`CREATE TABLE audit_logs (
+			id TEXT PRIMARY KEY,
+			actor_id TEXT,
+			action TEXT NOT NULL,
+			entity_type TEXT NOT NULL,
+			entity_id TEXT,
+			metadata TEXT NOT NULL DEFAULT '{}',
+			created_at DATETIME
+		);`,
+		`CREATE TABLE refresh_tokens (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
+			expires_at DATETIME NOT NULL,
 			created_at DATETIME
 		);`,
 	}
@@ -105,6 +243,10 @@ func createSQLiteSchema(t *testing.T, db *gorm.DB) {
 }
 
 func doJSONRequest(t *testing.T, r *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
+	return doJSONRequestWithToken(t, r, method, path, body, "")
+}
+
+func doJSONRequestWithToken(t *testing.T, r *gin.Engine, method, path string, body any, token string) *httptest.ResponseRecorder {
 	t.Helper()
 	var payload []byte
 	var err error
@@ -117,9 +259,30 @@ func doJSONRequest(t *testing.T, r *gin.Engine, method, path string, body any) *
 
 	req := httptest.NewRequest(method, path, bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp := httptest.NewRecorder()
 	r.ServeHTTP(resp, req)
 	return resp
+}
+
+func loginAndGetAccessToken(t *testing.T, r *gin.Engine, email, password string) string {
+	t.Helper()
+	resp := doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"email":    email,
+		"password": password,
+	})
+	if resp.Code != http.StatusOK {
+		t.Fatalf("login failed: %s", resp.Body.String())
+	}
+	var body struct {
+		AccessToken string `json:"accessToken"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("parse login: %v", err)
+	}
+	return body.AccessToken
 }
 
 func doRawRequest(r *gin.Engine, method, path string, body string) *httptest.ResponseRecorder {
@@ -233,15 +396,16 @@ func TestGenresAndPreferences(t *testing.T) {
 		t.Fatalf("expected 200, got %d", genresResp.Code)
 	}
 
-	saveResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/user/preferences", map[string]any{
-		"userId": registerBody.UserID,
+	token := loginAndGetAccessToken(t, r, "reader@example.com", "password123")
+
+	saveResp := doJSONRequestWithToken(t, r, http.MethodPost, "/api/v1/user/preferences", map[string]any{
 		"genres": []string{"history", "science"},
-	})
+	}, token)
 	if saveResp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", saveResp.Code, saveResp.Body.String())
 	}
 
-	getResp := doJSONRequest(t, r, http.MethodGet, "/api/v1/user/"+registerBody.UserID+"/preferences", nil)
+	getResp := doJSONRequestWithToken(t, r, http.MethodGet, "/api/v1/user/"+registerBody.UserID+"/preferences", nil, token)
 	if getResp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", getResp.Code)
 	}
@@ -258,37 +422,29 @@ func TestGenresAndPreferences(t *testing.T) {
 func TestSavePreferencesValidationAndErrors(t *testing.T) {
 	r, _ := setupTestHandler(t)
 
-	invalidBodyResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/user/preferences", map[string]any{
-		"userId": "not-a-uuid",
-		"genres": []string{},
+	unauthResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/user/preferences", map[string]any{
+		"genres": []string{"history"},
 	})
+	if unauthResp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without token, got %d", unauthResp.Code)
+	}
+
+	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
+		"email":    "reader@example.com",
+		"password": "password123",
+	})
+	token := loginAndGetAccessToken(t, r, "reader@example.com", "password123")
+
+	invalidBodyResp := doJSONRequestWithToken(t, r, http.MethodPost, "/api/v1/user/preferences", map[string]any{
+		"genres": []string{},
+	}, token)
 	if invalidBodyResp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid payload, got %d", invalidBodyResp.Code)
 	}
 
-	missingUserResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/user/preferences", map[string]any{
-		"userId": uuid.NewString(),
-		"genres": []string{"history"},
-	})
-	if missingUserResp.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 for missing user, got %d", missingUserResp.Code)
-	}
-
-	registerResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
-		"email":    "reader@example.com",
-		"password": "password123",
-	})
-	var registerBody struct {
-		UserID string `json:"userId"`
-	}
-	if err := json.Unmarshal(registerResp.Body.Bytes(), &registerBody); err != nil {
-		t.Fatalf("parse register response: %v", err)
-	}
-
-	badGenreResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/user/preferences", map[string]any{
-		"userId": registerBody.UserID,
+	badGenreResp := doJSONRequestWithToken(t, r, http.MethodPost, "/api/v1/user/preferences", map[string]any{
 		"genres": []string{"nonexistent"},
-	})
+	}, token)
 	if badGenreResp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid genres, got %d", badGenreResp.Code)
 	}
@@ -296,7 +452,12 @@ func TestSavePreferencesValidationAndErrors(t *testing.T) {
 
 func TestGetPreferencesValidation(t *testing.T) {
 	r, _ := setupTestHandler(t)
-	resp := doJSONRequest(t, r, http.MethodGet, "/api/v1/user/not-a-uuid/preferences", nil)
+	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
+		"email":    "reader@example.com",
+		"password": "password123",
+	})
+	token := loginAndGetAccessToken(t, r, "reader@example.com", "password123")
+	resp := doJSONRequestWithToken(t, r, http.MethodGet, "/api/v1/user/not-a-uuid/preferences", nil, token)
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid user id, got %d", resp.Code)
 	}
@@ -316,7 +477,7 @@ func TestInvalidJSONBodies(t *testing.T) {
 	}
 
 	prefResp := doRawRequest(r, http.MethodPost, "/api/v1/user/preferences", "{")
-	if prefResp.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid preferences JSON, got %d", prefResp.Code)
+	if prefResp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthenticated preferences request, got %d", prefResp.Code)
 	}
 }
