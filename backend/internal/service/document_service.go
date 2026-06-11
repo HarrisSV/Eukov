@@ -180,7 +180,8 @@ func (s *DocumentService) Publish(ctx context.Context, authorID, documentID uuid
 			return nil, err
 		}
 	}
-	if utf8.RuneCountInString(strings.TrimSpace(content)) < minPublishContentLength {
+	plain := StripHTML(content)
+	if utf8.RuneCountInString(strings.TrimSpace(plain)) < minPublishContentLength {
 		return nil, fmt.Errorf("%w: content must be at least %d characters", ErrPublishValidation, minPublishContentLength)
 	}
 

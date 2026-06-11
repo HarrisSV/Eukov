@@ -44,6 +44,10 @@ func setupIntegrationRouter(t *testing.T) *gin.Engine {
 		`CREATE TABLE access_keys (id TEXT PRIMARY KEY, key_hash TEXT NOT NULL, created_by TEXT NOT NULL, consumed_by TEXT, expires_at DATETIME NOT NULL, consumed_at DATETIME, status TEXT NOT NULL, created_at DATETIME);`,
 		`CREATE TABLE author_applications (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, qualifications TEXT NOT NULL, experience TEXT NOT NULL, status TEXT NOT NULL, reviewed_by TEXT, reviewed_at DATETIME, created_at DATETIME, updated_at DATETIME);`,
 		`CREATE TABLE refresh_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at DATETIME NOT NULL, created_at DATETIME);`,
+		`CREATE TABLE author_subscriptions (id TEXT PRIMARY KEY, reader_id TEXT NOT NULL, author_id TEXT NOT NULL, created_at DATETIME, UNIQUE (reader_id, author_id));`,
+		`CREATE TABLE issued_books (id TEXT PRIMARY KEY, reader_id TEXT NOT NULL, document_id TEXT NOT NULL, issued_at DATETIME NOT NULL, last_opened_at DATETIME, UNIQUE (reader_id, document_id));`,
+		`CREATE TABLE reading_progress (id TEXT PRIMARY KEY, reader_id TEXT NOT NULL, document_id TEXT NOT NULL, current_page INTEGER NOT NULL DEFAULT 1, completion_percentage REAL NOT NULL DEFAULT 0, last_read_at DATETIME);`,
+		`CREATE TABLE reader_activity (id TEXT PRIMARY KEY, reader_id TEXT NOT NULL, document_id TEXT NOT NULL, activity_type TEXT NOT NULL, created_at DATETIME);`,
 	}
 	for _, stmt := range stmts {
 		if err := db.Exec(stmt).Error; err != nil {
@@ -84,6 +88,16 @@ func setupIntegrationRouter(t *testing.T) *gin.Engine {
 	)
 	docketSvc := service.NewDocketService(docketItemRepo, documentRepo, tagRepo, genreRepo, metadataRepo)
 	adminActivitySvc := service.NewAdminActivityService(userRepo, documentRepo, publishAuditRepo, repository.NewUnpublishRepository(db))
+	authorSubRepo := repository.NewAuthorSubscriptionRepository(db)
+	issuedBookRepo := repository.NewIssuedBookRepository(db)
+	readingProgressRepo := repository.NewReadingProgressRepository(db)
+	readerActivityRepo := repository.NewReaderActivityRepository(db)
+	librarySvc := service.NewLibraryService(documentRepo, tagRepo, genreRepo)
+	recommendationSvc := service.NewRecommendationService(documentRepo, tagRepo, readerActivityRepo, prefRepo)
+	issuanceSvc := service.NewIssuanceService(issuedBookRepo, documentRepo, authorSubRepo, userRepo, readerActivityRepo, docketItemRepo, readingProgressRepo)
+	subscriptionSvc := service.NewSubscriptionService(authorSubRepo, userRepo, docketItemRepo, auditSvc, issuanceSvc)
+	progressSvc := service.NewProgressService(readingProgressRepo, issuanceSvc, readerActivityRepo, fileSvc, documentRepo)
+	readingSvc := service.NewReadingService(documentRepo, fileSvc, issuanceSvc, readingProgressRepo)
 	h := api.NewHandler(
 		service.NewUserService(userRepo),
 		service.NewGenreService(genreRepo),
@@ -96,6 +110,12 @@ func setupIntegrationRouter(t *testing.T) *gin.Engine {
 		documentSvc,
 		docketSvc,
 		adminActivitySvc,
+		librarySvc,
+		recommendationSvc,
+		subscriptionSvc,
+		issuanceSvc,
+		progressSvc,
+		readingSvc,
 	)
 
 	r := gin.New()

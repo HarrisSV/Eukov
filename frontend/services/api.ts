@@ -223,6 +223,78 @@ export const api = {
       true,
     ),
 
+  getLibrary: (params?: LibraryQueryParams) => {
+    const search = new URLSearchParams();
+    if (params?.q) search.set("q", params.q);
+    if (params?.genreId) search.set("genreId", params.genreId);
+    if (params?.authorId) search.set("authorId", params.authorId);
+    if (params?.sort) search.set("sort", params.sort);
+    const qs = search.toString();
+    return request<{ books: LibraryBook[] }>(
+      `/library${qs ? `?${qs}` : ""}`,
+      {},
+      true,
+    );
+  },
+
+  getRecommendedLibrary: (limit = 10) =>
+    request<{ books: RecommendedBook[] }>(
+      `/library/recommended?limit=${limit}`,
+      {},
+      true,
+    ),
+
+  subscribeAuthor: (authorId: string, documentId?: string) =>
+    request<{ subscription: { id: string } }>(
+      `/authors/${authorId}/subscribe`,
+      {
+        method: "POST",
+        body: JSON.stringify(documentId ? { documentId } : {}),
+      },
+      true,
+    ),
+
+  getDocumentPreview: (documentId: string) =>
+    request<{ preview: BookPreview }>(
+      `/documents/${documentId}/preview`,
+      {},
+      true,
+    ),
+
+  unsubscribeAuthor: (authorId: string) =>
+    request<{ success: boolean }>(
+      `/authors/${authorId}/unsubscribe`,
+      { method: "DELETE" },
+      true,
+    ),
+
+  issueBook: (documentId: string) =>
+    request<{ issuedBook: { id: string; documentId: string } }>(
+      `/documents/${documentId}/issue`,
+      { method: "POST" },
+      true,
+    ),
+
+  getDocumentPage: (documentId: string, page: number) =>
+    request<{ page: DocumentPage }>(
+      `/documents/${documentId}/pages/${page}`,
+      {},
+      true,
+    ),
+
+  saveProgress: (documentId: string, page: number) =>
+    request<{ progress: ReadingProgress }>(
+      "/progress",
+      {
+        method: "POST",
+        body: JSON.stringify({ documentId, page }),
+      },
+      true,
+    ),
+
+  getDocketBooks: () =>
+    request<{ books: DocketBook[] }>("/docket/books", {}, true),
+
   getDocument: (id: string) =>
     request<{ document: DocumentDetail }>(`/documents/${id}`, {}, true),
 
@@ -321,6 +393,67 @@ export interface AuthorActivitySummary {
   draftCount: number;
   publishedCount: number;
   recentEvents: { id: string; eventType: string; documentId?: string; createdAt: string }[];
+}
+
+export interface LibraryQueryParams {
+  q?: string;
+  genreId?: string;
+  authorId?: string;
+  sort?: "newest" | "oldest" | "most_read" | "recently_published";
+}
+
+export interface LibraryBook {
+  id: string;
+  title: string;
+  authorId: string;
+  authorEmail: string;
+  genreId?: string;
+  genreName?: string;
+  summary?: string;
+  tags: string[];
+  openCount: number;
+  publishedAt?: string;
+}
+
+export interface RecommendedBook extends LibraryBook {
+  score: number;
+}
+
+export interface BookPreview {
+  documentId: string;
+  title: string;
+  authorId: string;
+  authorEmail: string;
+  previewText: string;
+  wordCount: number;
+  totalWords: number;
+  requiresSubscription: boolean;
+  hasAccess: boolean;
+  isSubscribed: boolean;
+}
+
+export interface DocumentPage {
+  documentId: string;
+  title: string;
+  page: number;
+  totalPages: number;
+  content: string;
+}
+
+export interface ReadingProgress {
+  documentId: string;
+  currentPage: number;
+  completionPercentage: number;
+  lastReadAt?: string;
+}
+
+export interface DocketBook {
+  documentId: string;
+  title: string;
+  issuedAt: string;
+  lastOpenedAt?: string;
+  currentPage: number;
+  completionPercentage: number;
 }
 
 export interface DocumentSummary {

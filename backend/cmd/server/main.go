@@ -88,6 +88,18 @@ func main() {
 	docketSvc := service.NewDocketService(docketItemRepo, documentRepo, tagRepo, genreRepo, metadataRepo)
 	adminActivitySvc := service.NewAdminActivityService(userRepo, documentRepo, publishAuditRepo, unpublishRepo)
 
+	authorSubRepo := repository.NewAuthorSubscriptionRepository(db)
+	issuedBookRepo := repository.NewIssuedBookRepository(db)
+	readingProgressRepo := repository.NewReadingProgressRepository(db)
+	readerActivityRepo := repository.NewReaderActivityRepository(db)
+
+	librarySvc := service.NewLibraryService(documentRepo, tagRepo, genreRepo)
+	recommendationSvc := service.NewRecommendationService(documentRepo, tagRepo, readerActivityRepo, prefRepo)
+	issuanceSvc := service.NewIssuanceService(issuedBookRepo, documentRepo, authorSubRepo, userRepo, readerActivityRepo, docketItemRepo, readingProgressRepo)
+	subscriptionSvc := service.NewSubscriptionService(authorSubRepo, userRepo, docketItemRepo, auditSvc, issuanceSvc)
+	progressSvc := service.NewProgressService(readingProgressRepo, issuanceSvc, readerActivityRepo, fileSvc, documentRepo)
+	readingSvc := service.NewReadingService(documentRepo, fileSvc, issuanceSvc, readingProgressRepo)
+
 	handler := api.NewHandler(
 		userSvc,
 		genreSvc,
@@ -100,6 +112,12 @@ func main() {
 		documentSvc,
 		docketSvc,
 		adminActivitySvc,
+		librarySvc,
+		recommendationSvc,
+		subscriptionSvc,
+		issuanceSvc,
+		progressSvc,
+		readingSvc,
 	)
 
 	authLimiter := middleware.NewRateLimiter(20, time.Minute)

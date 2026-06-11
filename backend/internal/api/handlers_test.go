@@ -75,8 +75,13 @@ func setupRouterFromDB(t *testing.T, db *gorm.DB) *gin.Engine {
 	documentSvc := newTestDocumentService(t, db, auditSvc)
 	docketSvc := newTestDocketService(db)
 	adminActivitySvc := newTestAdminActivityService(db)
+	phase4 := newTestPhase4Services(t, db, auditSvc)
 
-	h := NewHandler(userSvc, genreSvc, prefSvc, storageSvc, sessionSvc, accessKeySvc, authorAppSvc, auditSvc, documentSvc, docketSvc, adminActivitySvc)
+	h := NewHandler(
+		userSvc, genreSvc, prefSvc, storageSvc, sessionSvc, accessKeySvc, authorAppSvc, auditSvc,
+		documentSvc, docketSvc, adminActivitySvc,
+		phase4.library, phase4.recommendations, phase4.subscriptions, phase4.issuance, phase4.progress, phase4.reading,
+	)
 	r := gin.New()
 	authLimiter := middleware.NewRateLimiter(1000, time.Minute)
 	h.RegisterRoutes(r, jwtSvc, authLimiter)
@@ -115,6 +120,46 @@ func newTestAdminActivityService(db *gorm.DB) *service.AdminActivityService {
 		repository.NewPublishAuditEventRepository(db),
 		repository.NewUnpublishRepository(db),
 	)
+}
+
+type testPhase4Services struct {
+	library         *service.LibraryService
+	recommendations *service.RecommendationService
+	subscriptions   *service.SubscriptionService
+	issuance        *service.IssuanceService
+	progress        *service.ProgressService
+	reading         *service.ReadingService
+}
+
+func newTestPhase4Services(t *testing.T, db *gorm.DB, auditSvc *service.AuditService) testPhase4Services {
+	t.Helper()
+	documentRepo := repository.NewDocumentRepository(db)
+	tagRepo := repository.NewDocumentTagRepository(db)
+	genreRepo := repository.NewGenreRepository(db)
+	prefRepo := repository.NewPreferenceRepository(db)
+	userRepo := repository.NewUserRepository(db)
+	docketItemRepo := repository.NewDocketItemRepository(db)
+	authorSubRepo := repository.NewAuthorSubscriptionRepository(db)
+	issuedBookRepo := repository.NewIssuedBookRepository(db)
+	readingProgressRepo := repository.NewReadingProgressRepository(db)
+	readerActivityRepo := repository.NewReaderActivityRepository(db)
+	fileSvc := service.NewDocumentFileService(t.TempDir())
+
+	librarySvc := service.NewLibraryService(documentRepo, tagRepo, genreRepo)
+	recommendationSvc := service.NewRecommendationService(documentRepo, tagRepo, readerActivityRepo, prefRepo)
+	issuanceSvc := service.NewIssuanceService(issuedBookRepo, documentRepo, authorSubRepo, userRepo, readerActivityRepo, docketItemRepo, readingProgressRepo)
+	subscriptionSvc := service.NewSubscriptionService(authorSubRepo, userRepo, docketItemRepo, auditSvc, issuanceSvc)
+	progressSvc := service.NewProgressService(readingProgressRepo, issuanceSvc, readerActivityRepo, fileSvc, documentRepo)
+	readingSvc := service.NewReadingService(documentRepo, fileSvc, issuanceSvc, readingProgressRepo)
+
+	return testPhase4Services{
+		library:         librarySvc,
+		recommendations: recommendationSvc,
+		subscriptions:   subscriptionSvc,
+		issuance:        issuanceSvc,
+		progress:        progressSvc,
+		reading:         readingSvc,
+	}
 }
 
 func createSQLiteSchema(t *testing.T, db *gorm.DB) {
@@ -231,6 +276,36 @@ func createSQLiteSchema(t *testing.T, db *gorm.DB) {
 			user_id TEXT NOT NULL,
 			token_hash TEXT NOT NULL UNIQUE,
 			expires_at DATETIME NOT NULL,
+			created_at DATETIME
+		);`,
+		`CREATE TABLE author_subscriptions (
+			id TEXT PRIMARY KEY,
+			reader_id TEXT NOT NULL,
+			author_id TEXT NOT NULL,
+			created_at DATETIME,
+			UNIQUE (reader_id, author_id)
+		);`,
+		`CREATE TABLE issued_books (
+			id TEXT PRIMARY KEY,
+			reader_id TEXT NOT NULL,
+			document_id TEXT NOT NULL,
+			issued_at DATETIME NOT NULL,
+			last_opened_at DATETIME,
+			UNIQUE (reader_id, document_id)
+		);`,
+		`CREATE TABLE reading_progress (
+			id TEXT PRIMARY KEY,
+			reader_id TEXT NOT NULL,
+			document_id TEXT NOT NULL,
+			current_page INTEGER NOT NULL DEFAULT 1,
+			completion_percentage REAL NOT NULL DEFAULT 0,
+			last_read_at DATETIME
+		);`,
+		`CREATE TABLE reader_activity (
+			id TEXT PRIMARY KEY,
+			reader_id TEXT NOT NULL,
+			document_id TEXT NOT NULL,
+			activity_type TEXT NOT NULL,
 			created_at DATETIME
 		);`,
 	}

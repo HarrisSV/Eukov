@@ -218,6 +218,42 @@ done
 
 Files: `./uploads/dockets/{author_id}/{document_id}.txt` (atomic writes, mutex locking).
 
+## Phase 4 — Global Library, Reader Experience & Discovery
+
+Phase 4 adds the consumer ecosystem: global library discovery, author subscriptions, book issuance, reader docket integration, SQL-based recommendations, paginated reading, browser TTS, and reading progress.
+
+> **Migration numbering:** Phase 3 already uses `000015`–`000016`. Phase 4 migrations are **`000017`–`000020`** (not the PRD’s `000015`–`000018`).
+
+### Migrations (000017–000020)
+
+```bash
+for f in migrations/000017_*.up.sql migrations/000018_*.up.sql \
+         migrations/000019_*.up.sql migrations/000020_*.up.sql; do
+  psql "$DATABASE_URL" -f "$f"
+done
+```
+
+Tables: `author_subscriptions`, `issued_books`, `reading_progress`, `reader_activity`.
+
+### User flows
+
+- **Library** (`/dashboard/library`) — search, genre filter, sort, recommendations, issue book, follow author
+- **Reader** (`/dashboard/read/[id]`) — paginated text (3000 chars/page), progress sync, Web Speech API audio
+- **Docket** (`/dashboard/docket`) — issued books with continue-reading links
+
+### Key API
+
+| Method | Path | Role |
+|--------|------|------|
+| GET | `/api/v1/library` | Reader+ |
+| GET | `/api/v1/library/recommended` | Reader+ |
+| POST | `/api/v1/authors/:id/subscribe` | Reader+ |
+| DELETE | `/api/v1/authors/:id/unsubscribe` | Reader+ |
+| POST | `/api/v1/documents/:id/issue` | Reader+ |
+| GET | `/api/v1/documents/:id/pages/:page` | Reader+ (issued or author) |
+| POST | `/api/v1/progress` | Reader+ |
+| GET | `/api/v1/docket/books` | Reader+ |
+
 ## Phase 1 Scope
 
 **Included:** Project structure, DB schema, migrations, UI shell, registration, genre questionnaire, local upload dirs, health API, themes, tests, CI.

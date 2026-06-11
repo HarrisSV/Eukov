@@ -121,6 +121,65 @@ func (r *DocumentRepository) ListPublished(ctx context.Context) ([]models.Docume
 	return docs, err
 }
 
+type LibrarySearchParams struct {
+	Query    string
+	GenreID  *uuid.UUID
+	AuthorID *uuid.UUID
+	Sort     string
+}
+
+type LibraryDocumentRow struct {
+	models.Document
+	AuthorEmail string `gorm:"column:author_email"`
+	GenreName   string `gorm:"column:genre_name"`
+	Summary     string `gorm:"column:summary"`
+	OpenCount   int64  `gorm:"column:open_count"`
+}
+
+func (r *DocumentRepository) SearchPublished(ctx context.Context, params LibrarySearchParams) ([]LibraryDocumentRow, error) {
+	q := r.db.WithContext(ctx).
+		Table("documents").
+		Select(`documents.*, users.email AS author_email, genres.name AS genre_name,
+			COALESCE(document_metadata.summary, '') AS summary,
+			(SELECT COUNT(*) FROM reader_activity ra
+			 WHERE ra.document_id = documents.id AND ra.activity_type = 'BOOK_OPENED') AS open_count`).
+		Joins("JOIN users ON users.id = documents.author_id").
+		Joins("LEFT JOIN genres ON genres.id = documents.genre_id").
+		Joins("LEFT JOIN document_metadata ON document_metadata.document_id = documents.id").
+		Where("documents.status = ?", "PUBLISHED")
+
+	if params.GenreID != nil {
+		q = q.Where("documents.genre_id = ?", *params.GenreID)
+	}
+	if params.AuthorID != nil {
+		q = q.Where("documents.author_id = ?", *params.AuthorID)
+	}
+	if params.Query != "" {
+		like := "%" + params.Query + "%"
+		q = q.Where(`(
+			LOWER(documents.title) LIKE LOWER(?) OR LOWER(users.email) LIKE LOWER(?)
+			OR LOWER(COALESCE(genres.name, '')) LIKE LOWER(?)
+			OR LOWER(COALESCE(document_metadata.summary, '')) LIKE LOWER(?)
+			OR EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = documents.id AND LOWER(dt.tag) LIKE LOWER(?))
+		)`, like, like, like, like, like)
+	}
+
+	switch params.Sort {
+	case "oldest":
+		q = q.Order("documents.published_at ASC NULLS LAST, documents.created_at ASC")
+	case "recently_published":
+		q = q.Order("documents.published_at DESC NULLS LAST")
+	case "most_read":
+		q = q.Order("open_count DESC, documents.published_at DESC NULLS LAST")
+	default:
+		q = q.Order("documents.published_at DESC NULLS LAST, documents.created_at DESC")
+	}
+
+	var rows []LibraryDocumentRow
+	err := q.Scan(&rows).Error
+	return rows, err
+}
+
 func (r *DocumentRepository) AuthorIDForDocument(ctx context.Context, documentID uuid.UUID) (uuid.UUID, error) {
 	doc, err := r.FindByID(ctx, documentID)
 	if err != nil {
@@ -272,6 +331,8 @@ const (
 	DocketItemManuscript     = "MANUSCRIPT"
 	DocketItemLibrarySub     = "LIBRARY_SUBSCRIPTION"
 	DocketItemSavedBook      = "SAVED_BOOK"
+	DocketItemIssuedBook     = "ISSUED_BOOK"
+	DocketItemAuthorSub      = "AUTHOR_SUBSCRIPTION"
 )
 
 func (r *DocketItemRepository) Upsert(ctx context.Context, item *models.DocketItem) error {
@@ -308,6 +369,12 @@ func (r *DocketItemRepository) ListByUserAndType(ctx context.Context, userID uui
 		Order("saved_at DESC").
 		Find(&items).Error
 	return items, err
+}
+
+func (r *DocketItemRepository) DeleteByRef(ctx context.Context, userID uuid.UUID, itemType string, itemID uuid.UUID) error {
+	return r.db.WithContext(ctx).
+		Where("user_id = ? AND item_type = ? AND item_id = ?", userID, itemType, itemID).
+		Delete(&models.DocketItem{}).Error
 }
 
 type PublishAuditEventRepository struct {

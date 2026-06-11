@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, NetworkError } from "@/services/api";
 import type { DocumentSummary } from "@/services/api";
 import { PublishDialog } from "@/features/docket/PublishDialog";
+import { DraftEditor } from "@/features/docket/DraftEditor";
 import { useAuthStore } from "@/store/authStore";
 import { roles } from "@/lib/roles";
 
@@ -219,22 +221,68 @@ function DocList({
 }
 
 function ReaderDocketPanel({ ws }: { ws?: Awaited<ReturnType<typeof api.getDocketWorkspace>> }) {
+  const booksQuery = useQuery({
+    queryKey: ["docket-books"],
+    queryFn: async () => (await api.getDocketBooks()).books,
+  });
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <h2 className="text-lg font-bold">Your Docket</h2>
       <p className="text-sm text-muted">
-        Universal workspace for saved books, reading progress, and library subscriptions (Phase 4).
+        Issued books, reading progress, and author subscriptions live here.
       </p>
-      <dl className="grid grid-cols-2 gap-4 text-sm">
+      <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
         <div className="border-2 border-foreground p-3">
-          <dt className="font-bold uppercase text-xs">Saved books</dt>
+          <dt className="text-xs font-bold uppercase">Issued books</dt>
+          <dd className="mt-1 text-2xl font-bold">{booksQuery.data?.length ?? 0}</dd>
+        </div>
+        <div className="border-2 border-foreground p-3">
+          <dt className="text-xs font-bold uppercase">Saved books</dt>
           <dd className="mt-1 text-2xl font-bold">{ws?.savedBooks.length ?? 0}</dd>
         </div>
         <div className="border-2 border-foreground p-3">
-          <dt className="font-bold uppercase text-xs">Subscriptions</dt>
+          <dt className="text-xs font-bold uppercase">Subscriptions</dt>
           <dd className="mt-1 text-2xl font-bold">{ws?.subscribedItems.length ?? 0}</dd>
         </div>
       </dl>
+
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-bold uppercase tracking-wide">Continue reading</h3>
+        {booksQuery.isLoading && (
+          <p className="text-sm text-muted">Loading issued books...</p>
+        )}
+        {booksQuery.data && booksQuery.data.length === 0 && (
+          <p className="text-sm text-muted">
+            No issued books yet. Browse the{" "}
+            <Link href="/dashboard/library" className="underline">
+              library
+            </Link>{" "}
+            to issue a title.
+          </p>
+        )}
+        <ul className="flex flex-col gap-2">
+          {booksQuery.data?.map((book) => (
+            <li
+              key={book.documentId}
+              className="flex flex-wrap items-center justify-between gap-2 border-2 border-foreground p-3"
+            >
+              <div>
+                <p className="font-bold text-foreground">{book.title}</p>
+                <p className="text-xs text-muted">
+                  Page {book.currentPage} · {Math.round(book.completionPercentage)}% complete
+                </p>
+              </div>
+              <Link
+                href={`/dashboard/read/${book.documentId}?page=${book.currentPage}`}
+                className="border-2 border-foreground bg-foreground px-3 py-1 text-sm font-medium text-background"
+              >
+                Continue
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }
@@ -260,14 +308,9 @@ function AuthorNewDraftPanel({
         value={title}
         onChange={(e) => onTitle(e.target.value)}
         placeholder="Draft title"
-        className="border-2 border-foreground bg-background px-3 py-2"
+        className="border-2 border-foreground bg-background px-3 py-2 font-bold"
       />
-      <textarea
-        value={content}
-        onChange={(e) => onContent(e.target.value)}
-        placeholder="Start writing..."
-        className="min-h-[320px] flex-1 resize-y border-2 border-foreground bg-background p-3 font-mono text-sm"
-      />
+      <DraftEditor content={content} onChange={onContent} />
       <button
         type="button"
         onClick={onCreate}
@@ -311,11 +354,11 @@ function AuthorEditorPanel({
         disabled={!isDraft}
         className="border-2 border-foreground bg-background px-3 py-2 font-bold disabled:opacity-70"
       />
-      <textarea
-        value={content}
-        onChange={(e) => onContent(e.target.value)}
+      <DraftEditor
+        content={content}
+        onChange={onContent}
         disabled={!isDraft}
-        className="min-h-[360px] flex-1 resize-y border-2 border-foreground bg-background p-3 font-mono text-sm disabled:opacity-70"
+        placeholder={isDraft ? "Write or import your manuscript..." : "Published — read-only view"}
       />
       <div className="flex flex-wrap gap-2">
         {isDraft && (

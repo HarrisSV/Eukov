@@ -135,6 +135,15 @@ func (r *PreferenceRepository) SaveUserGenres(ctx context.Context, userID uuid.U
 	})
 }
 
+func (r *PreferenceRepository) GetUserGenreIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	err := r.db.WithContext(ctx).
+		Model(&models.UserGenre{}).
+		Where("user_id = ?", userID).
+		Pluck("genre_id", &ids).Error
+	return ids, err
+}
+
 func (r *PreferenceRepository) GetUserGenreNames(ctx context.Context, userID uuid.UUID) ([]string, error) {
 	var names []string
 	err := r.db.WithContext(ctx).

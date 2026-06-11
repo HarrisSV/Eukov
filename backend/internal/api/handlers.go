@@ -15,18 +15,24 @@ import (
 )
 
 type Handler struct {
-	users       *service.UserService
-	genres      *service.GenreService
-	preferences *service.PreferenceService
-	storage     *service.StorageService
-	sessions    *service.AuthSessionService
-	accessKeys  *service.AccessKeyService
-	authorApps  *service.AuthorApplicationService
-	audit       *service.AuditService
-	documents     *service.DocumentService
-	docket        *service.DocketService
-	adminActivity *service.AdminActivityService
-	validate      *validator.Validate
+	users           *service.UserService
+	genres          *service.GenreService
+	preferences     *service.PreferenceService
+	storage         *service.StorageService
+	sessions        *service.AuthSessionService
+	accessKeys      *service.AccessKeyService
+	authorApps      *service.AuthorApplicationService
+	audit           *service.AuditService
+	documents       *service.DocumentService
+	docket          *service.DocketService
+	adminActivity   *service.AdminActivityService
+	library         *service.LibraryService
+	recommendations *service.RecommendationService
+	subscriptions   *service.SubscriptionService
+	issuance        *service.IssuanceService
+	progress        *service.ProgressService
+	reading         *service.ReadingService
+	validate        *validator.Validate
 }
 
 func NewHandler(
@@ -41,20 +47,32 @@ func NewHandler(
 	documents *service.DocumentService,
 	docket *service.DocketService,
 	adminActivity *service.AdminActivityService,
+	library *service.LibraryService,
+	recommendations *service.RecommendationService,
+	subscriptions *service.SubscriptionService,
+	issuance *service.IssuanceService,
+	progress *service.ProgressService,
+	reading *service.ReadingService,
 ) *Handler {
 	return &Handler{
-		users:         users,
-		genres:        genres,
-		preferences:   preferences,
-		storage:       storage,
-		sessions:      sessions,
-		accessKeys:    accessKeys,
-		authorApps:    authorApps,
-		audit:         audit,
-		documents:     documents,
-		docket:        docket,
-		adminActivity: adminActivity,
-		validate:      validator.New(),
+		users:           users,
+		genres:          genres,
+		preferences:     preferences,
+		storage:         storage,
+		sessions:        sessions,
+		accessKeys:      accessKeys,
+		authorApps:      authorApps,
+		audit:           audit,
+		documents:       documents,
+		docket:          docket,
+		adminActivity:   adminActivity,
+		library:         library,
+		recommendations: recommendations,
+		subscriptions:   subscriptions,
+		issuance:        issuance,
+		progress:        progress,
+		reading:         reading,
+		validate:        validator.New(),
 	}
 }
 
@@ -80,6 +98,15 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, jwtSvc *auth.JWTService, authLim
 			reader.POST("/author-applications", h.SubmitAuthorApplication)
 			reader.POST("/access-keys/consume", h.ConsumeAccessKey)
 			reader.GET("/docket", h.GetDocketWorkspace)
+			reader.GET("/docket/books", h.GetDocketBooks)
+			reader.GET("/library", h.GetLibrary)
+			reader.GET("/library/recommended", h.GetRecommendedLibrary)
+			reader.POST("/authors/:id/subscribe", h.SubscribeAuthor)
+			reader.DELETE("/authors/:id/unsubscribe", h.UnsubscribeAuthor)
+			reader.POST("/documents/:id/issue", h.IssueBook)
+			reader.GET("/documents/:id/preview", h.GetDocumentPreview)
+			reader.GET("/documents/:id/pages/:page", h.GetDocumentPage)
+			reader.POST("/progress", h.SaveProgress)
 
 			admin := protected.Group("/admin")
 			admin.Use(middleware.RequireRole(roles.Admin))

@@ -188,3 +188,51 @@ type RefreshToken struct {
 func (RefreshToken) TableName() string {
 	return "refresh_tokens"
 }
+
+type AuthorSubscription struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	ReaderID  uuid.UUID `gorm:"type:uuid;not null;index" json:"readerId"`
+	AuthorID  uuid.UUID `gorm:"type:uuid;not null;index" json:"authorId"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+func (AuthorSubscription) TableName() string {
+	return "author_subscriptions"
+}
+
+type IssuedBook struct {
+	ID           uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	ReaderID     uuid.UUID  `gorm:"type:uuid;not null;index" json:"readerId"`
+	DocumentID   uuid.UUID  `gorm:"type:uuid;not null;index" json:"documentId"`
+	IssuedAt     time.Time  `json:"issuedAt"`
+	LastOpenedAt *time.Time `json:"lastOpenedAt,omitempty"`
+}
+
+func (IssuedBook) TableName() string {
+	return "issued_books"
+}
+
+type ReadingProgress struct {
+	ID                   uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	ReaderID             uuid.UUID `gorm:"type:uuid;not null;index" json:"readerId"`
+	DocumentID           uuid.UUID `gorm:"type:uuid;not null;index" json:"documentId"`
+	CurrentPage          int       `gorm:"not null;default:1" json:"currentPage"`
+	CompletionPercentage float64   `gorm:"type:numeric(5,2);not null;default:0" json:"completionPercentage"`
+	LastReadAt           time.Time `json:"lastReadAt"`
+}
+
+func (ReadingProgress) TableName() string {
+	return "reading_progress"
+}
+
+type ReaderActivity struct {
+	ID           uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	ReaderID     uuid.UUID `gorm:"type:uuid;not null;index" json:"readerId"`
+	DocumentID   uuid.UUID `gorm:"type:uuid;not null;index" json:"documentId"`
+	ActivityType string    `gorm:"type:varchar(50);not null" json:"activityType"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+func (ReaderActivity) TableName() string {
+	return "reader_activity"
+}
