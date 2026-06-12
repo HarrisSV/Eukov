@@ -123,6 +123,11 @@ export function LibraryCatalog() {
         {libraryQuery.isLoading && (
           <p className="text-sm text-muted">Loading library...</p>
         )}
+        {libraryQuery.isError && (
+          <p className="text-sm text-danger" role="alert">
+            Could not load the library catalog. Restart the backend after applying Phase 4 migrations (000017–000020).
+          </p>
+        )}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {books.map((book) => (
             <LibraryCard
@@ -132,8 +137,10 @@ export function LibraryCatalog() {
             />
           ))}
         </div>
-        {!libraryQuery.isLoading && books.length === 0 && (
-          <p className="text-sm text-muted">No published books match your filters.</p>
+        {!libraryQuery.isLoading && !libraryQuery.isError && books.length === 0 && (
+          <p className="text-sm text-muted">
+            No published books match your filters. Try clearing the genre filter.
+          </p>
         )}
       </section>
 
