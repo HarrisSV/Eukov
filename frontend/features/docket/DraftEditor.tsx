@@ -1,49 +1,75 @@
 "use client";
 
 import { useEditor, EditorContent } from "@tiptap/react";
+import type { Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
-import FontFamily from "@tiptap/extension-font-family";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
-import { TextStyle } from "@tiptap/extension-text-style";
-import { Extension } from "@tiptap/core";
+import { FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  DEFAULT_FONT_SIZE,
+  FONT_FAMILIES,
+  FONT_SIZE_POINTS,
+  matchFontValue,
+  pxToPoints,
+  sizeToPx,
+} from "@/features/docket/editor-config";
 import "./draft-editor.css";
 
-const FontSize = Extension.create({
-  name: "fontSize",
-  addGlobalAttributes() {
-    return [
-      {
-        types: ["textStyle"],
-        attributes: {
-          fontSize: {
-            default: null,
-            parseHTML: (element) => element.style.fontSize || null,
-            renderHTML: (attributes) => {
-              if (!attributes.fontSize) return {};
-              return { style: `font-size: ${attributes.fontSize}` };
-            },
-          },
-        },
-      },
-    ];
-  },
-});
-
-const FONT_FAMILIES = [
-  { label: "Default", value: "" },
-  { label: "Serif", value: "Georgia, serif" },
-  { label: "Sans", value: "Inter, system-ui, sans-serif" },
-  { label: "Mono", value: "ui-monospace, monospace" },
-];
-
-const FONT_SIZES = ["12px", "14px", "16px", "18px", "24px", "32px"];
-
-/** Prevent editor blur when clicking toolbar — required for Word-like button behavior. */
 function keepFocus(e: React.MouseEvent) {
   e.preventDefault();
+}
+
+function applyTextStyle(
+  editor: Editor,
+  apply: (chain: ReturnType<Editor["chain"]>) => ReturnType<ReturnType<Editor["chain"]>["run"]>,
+) {
+  const { empty } = editor.state.selection;
+  let chain = editor.chain().focus();
+  if (!empty) {
+    chain = chain.extendMarkRange("textStyle");
+  }
+  return apply(chain);
+}
+
+function useToolbarSync(editor: Editor | null) {
+  const [, bump] = useState(0);
+
+  useEffect(() => {
+    if (!editor) return;
+    const refresh = () => bump((n) => n + 1);
+    editor.on("selectionUpdate", refresh);
+    editor.on("transaction", refresh);
+    return () => {
+      editor.off("selectionUpdate", refresh);
+      editor.off("transaction", refresh);
+    };
+  }, [editor]);
+
+  if (!editor) {
+    return {
+      fontFamily: "",
+      fontSize: DEFAULT_FONT_SIZE,
+      alignLeft: true,
+      alignCenter: false,
+      alignRight: false,
+      alignJustify: false,
+    };
+  }
+
+  const textStyle = editor.getAttributes("textStyle") as { fontFamily?: string; fontSize?: string };
+  const align = editor.getAttributes("paragraph").textAlign as string | undefined;
+
+  return {
+    fontFamily: matchFontValue(textStyle.fontFamily),
+    fontSize: pxToPoints(textStyle.fontSize),
+    alignLeft: !align || align === "left",
+    alignCenter: align === "center",
+    alignRight: align === "right",
+    alignJustify: align === "justify",
+  };
 }
 
 interface DraftEditorProps {
@@ -88,6 +114,8 @@ export function DraftEditor({
       },
     },
   });
+
+  const toolbar = useToolbarSync(editor);
 
   useEffect(() => {
     if (!editor) return;
@@ -154,7 +182,7 @@ export function DraftEditor({
     <div className={`draft-editor${disabled ? " draft-editor--readonly" : ""}`}>
       {!disabled && (
         <div className="draft-editor__toolbar" role="toolbar" aria-label="Formatting toolbar">
-          <div className="draft-editor__group">
+          <div className="draft-editor__group" role="group" aria-label="Text style">
             <RibbonButton
               label="Bold"
               className="draft-editor__btn--bold"
@@ -183,7 +211,7 @@ export function DraftEditor({
 
           <div className="draft-editor__divider" aria-hidden />
 
-          <div className="draft-editor__group">
+          <div className="draft-editor__group" role="group" aria-label="Structure">
             <RibbonButton
               label="Heading 1"
               active={editor.isActive("heading", { level: 1 })}
@@ -216,31 +244,31 @@ export function DraftEditor({
 
           <div className="draft-editor__divider" aria-hidden />
 
-          <div className="draft-editor__group">
+          <div className="draft-editor__group" role="group" aria-label="Alignment">
             <RibbonButton
               label="Align left"
-              active={editor.isActive({ textAlign: "left" })}
+              active={toolbar.alignLeft}
               onAction={() => editor.chain().focus().setTextAlign("left").run()}
             >
               Left
             </RibbonButton>
             <RibbonButton
               label="Align center"
-              active={editor.isActive({ textAlign: "center" })}
+              active={toolbar.alignCenter}
               onAction={() => editor.chain().focus().setTextAlign("center").run()}
             >
               Center
             </RibbonButton>
             <RibbonButton
               label="Align right"
-              active={editor.isActive({ textAlign: "right" })}
+              active={toolbar.alignRight}
               onAction={() => editor.chain().focus().setTextAlign("right").run()}
             >
               Right
             </RibbonButton>
             <RibbonButton
               label="Justify"
-              active={editor.isActive({ textAlign: "justify" })}
+              active={toolbar.alignJustify}
               onAction={() => editor.chain().focus().setTextAlign("justify").run()}
             >
               Justify
@@ -249,20 +277,22 @@ export function DraftEditor({
 
           <div className="draft-editor__divider" aria-hidden />
 
-          <div className="draft-editor__group">
+          <div className="draft-editor__group" role="group" aria-label="Font">
             <label className="draft-editor__select-wrap">
               Font
               <select
                 className="draft-editor__select"
-                defaultValue=""
-                onMouseDown={keepFocus}
-                onChange={(e) =>
-                  editor.chain().focus().setFontFamily(e.target.value).run()
-                }
+                value={toolbar.fontFamily}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  applyTextStyle(editor, (chain) =>
+                    value ? chain.setFontFamily(value).run() : chain.unsetFontFamily().run(),
+                  );
+                }}
                 aria-label="Font family"
               >
                 {FONT_FAMILIES.map((f) => (
-                  <option key={f.label} value={f.value}>
+                  <option key={f.label} value={f.value} style={{ fontFamily: f.value || "inherit" }}>
                     {f.label}
                   </option>
                 ))}
@@ -271,21 +301,19 @@ export function DraftEditor({
             <label className="draft-editor__select-wrap">
               Size
               <select
-                className="draft-editor__select"
-                defaultValue="16px"
-                onMouseDown={keepFocus}
-                onChange={(e) =>
-                  editor
-                    .chain()
-                    .focus()
-                    .setMark("textStyle", { fontSize: e.target.value })
-                    .run()
-                }
+                className="draft-editor__select draft-editor__select--size"
+                value={String(toolbar.fontSize)}
+                onChange={(e) => {
+                  const points = Number(e.target.value);
+                  applyTextStyle(editor, (chain) =>
+                    chain.setFontSize(sizeToPx(points)).run(),
+                  );
+                }}
                 aria-label="Font size"
               >
-                {FONT_SIZES.map((size) => (
-                  <option key={size} value={size}>
-                    {size}
+                {FONT_SIZE_POINTS.map((pt) => (
+                  <option key={pt} value={pt}>
+                    {pt}
                   </option>
                 ))}
               </select>
@@ -294,7 +322,7 @@ export function DraftEditor({
 
           <div className="draft-editor__divider" aria-hidden />
 
-          <div className="draft-editor__group">
+          <div className="draft-editor__group" role="group" aria-label="Editing">
             <RibbonButton
               label="Insert hyperlink"
               active={editor.isActive("link")}
@@ -329,7 +357,7 @@ export function DraftEditor({
 
           <div className="draft-editor__divider" aria-hidden />
 
-          <div className="draft-editor__group">
+          <div className="draft-editor__group" role="group" aria-label="Import">
             <input
               ref={fileInputRef}
               type="file"
@@ -405,6 +433,7 @@ function RibbonButton({
     <button
       type="button"
       aria-label={label}
+      aria-pressed={active ?? false}
       title={label}
       disabled={disabled}
       onMouseDown={keepFocus}
