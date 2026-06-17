@@ -17,6 +17,8 @@ const SORT_OPTIONS: { value: LibraryQueryParams["sort"]; label: string }[] = [
   { value: "recently_published", label: "Recently published" },
 ];
 
+const RECOMMENDED_LIMIT = 8;
+
 export function LibraryCatalog() {
   const [query, setQuery] = useState("");
   const [genreId, setGenreId] = useState("");
@@ -26,7 +28,7 @@ export function LibraryCatalog() {
 
   const genresQuery = useQuery({
     queryKey: ["genres"],
-    queryFn: async () => (await api.getGenres()).genres,
+    queryFn: api.getGenres,
   });
 
   const libraryQuery = useQuery({
@@ -41,13 +43,19 @@ export function LibraryCatalog() {
 
   const recommendedQuery = useQuery({
     queryKey: ["library-recommended"],
-    queryFn: async () => (await api.getRecommendedLibrary()).books,
+    queryFn: async () =>
+      (await api.getRecommendedLibrary(RECOMMENDED_LIMIT)).books,
   });
 
   const books = libraryQuery.data?.books ?? [];
 
+  const recommendedBooks = useMemo(
+    () => (recommendedQuery.data ?? []).slice(0, RECOMMENDED_LIMIT),
+    [recommendedQuery.data],
+  );
+
   const genreOptions = useMemo(
-    () => genresQuery.data ?? [],
+    () => genresQuery.data?.genres ?? [],
     [genresQuery.data],
   );
 
@@ -103,22 +111,29 @@ export function LibraryCatalog() {
         </form>
       </section>
 
-      {recommendedQuery.data && recommendedQuery.data.length > 0 && (
+      {recommendedBooks.length > 0 && (
         <section className="flex flex-col gap-3">
           <h2 className="text-xl font-bold text-foreground">Recommended for you</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {recommendedQuery.data.map((book) => (
-              <LibraryCard
-                key={`rec-${book.id}`}
-                book={book}
-                onPreview={() => setPreviewBook(book)}
-              />
-            ))}
+          <div
+            className="-mx-1 overflow-x-auto px-1 pb-2"
+            role="region"
+            aria-label="Recommended books"
+          >
+            <div className="flex w-max min-w-full gap-4">
+              {recommendedBooks.map((book) => (
+                <div key={`rec-${book.id}`} className="w-72 shrink-0">
+                  <LibraryCard
+                    book={book}
+                    onPreview={() => setPreviewBook(book)}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       )}
 
-      <section className="flex flex-col gap-4">
+      <section className="flex min-h-0 flex-col gap-4">
         <h2 className="text-xl font-bold text-foreground">Catalog</h2>
         {libraryQuery.isLoading && (
           <p className="text-sm text-muted">Loading library...</p>
@@ -128,20 +143,22 @@ export function LibraryCatalog() {
             Could not load the library catalog. Restart the backend after applying Phase 4 migrations (000017–000020).
           </p>
         )}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {books.map((book) => (
-            <LibraryCard
-              key={book.id}
-              book={book}
-              onPreview={() => setPreviewBook(book)}
-            />
-          ))}
+        <div className="max-h-[calc(100vh-22rem)] overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {books.map((book) => (
+              <LibraryCard
+                key={book.id}
+                book={book}
+                onPreview={() => setPreviewBook(book)}
+              />
+            ))}
+          </div>
+          {!libraryQuery.isLoading && !libraryQuery.isError && books.length === 0 && (
+            <p className="text-sm text-muted">
+              No published books match your filters. Try clearing the genre filter.
+            </p>
+          )}
         </div>
-        {!libraryQuery.isLoading && !libraryQuery.isError && books.length === 0 && (
-          <p className="text-sm text-muted">
-            No published books match your filters. Try clearing the genre filter.
-          </p>
-        )}
       </section>
 
       {previewBook && (

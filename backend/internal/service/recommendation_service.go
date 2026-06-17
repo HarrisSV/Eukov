@@ -37,7 +37,7 @@ type RecommendedBook struct {
 
 func (s *RecommendationService) Recommend(ctx context.Context, readerID uuid.UUID, limit int) ([]RecommendedBook, error) {
 	if limit <= 0 {
-		limit = 10
+		limit = 8
 	}
 	rows, err := s.documents.SearchPublished(ctx, repository.LibrarySearchParams{Sort: "newest"})
 	if err != nil {

@@ -81,7 +81,7 @@ export function PublishDialog({
             className="border-2 border-foreground bg-background px-3 py-2"
           >
             <option value="">Select genre</option>
-            {genresQuery.data?.genres.map((g) => (
+            {(genresQuery.data?.genres ?? []).map((g) => (
               <option key={g.id} value={g.name}>
                 {formatGenreLabel(g.name)}
               </option>

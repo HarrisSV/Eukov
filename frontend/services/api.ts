@@ -237,7 +237,7 @@ export const api = {
     );
   },
 
-  getRecommendedLibrary: (limit = 10) =>
+  getRecommendedLibrary: (limit = 8) =>
     request<{ books: RecommendedBook[] }>(
       `/library/recommended?limit=${limit}`,
       {},
