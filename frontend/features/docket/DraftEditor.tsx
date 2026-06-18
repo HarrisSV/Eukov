@@ -16,7 +16,43 @@ import {
   pxToPoints,
   sizeToPx,
 } from "@/features/docket/editor-config";
+import {
+  PageBreak,
+  PageNumber,
+  SectionBreak,
+} from "@/features/docket/editor-page-extensions";
+import {
+  AlignCenterIcon,
+  AlignJustifyIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
+} from "@/features/docket/editor-align-icons";
 import "./draft-editor.css";
+
+type TextAlignValue = "left" | "center" | "right" | "justify";
+
+function getActiveTextAlign(editor: Editor): TextAlignValue {
+  if (editor.isActive("heading")) {
+    return (editor.getAttributes("heading").textAlign as TextAlignValue) || "left";
+  }
+  if (editor.isActive("paragraph")) {
+    return (editor.getAttributes("paragraph").textAlign as TextAlignValue) || "left";
+  }
+
+  const { $from } = editor.state.selection;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.type.name === "heading" || node.type.name === "paragraph") {
+      return (node.attrs.textAlign as TextAlignValue) || "left";
+    }
+  }
+
+  return "left";
+}
+
+function setBlockAlignment(editor: Editor, alignment: TextAlignValue) {
+  editor.chain().focus().setTextAlign(alignment).run();
+}
 
 function keepFocus(e: React.MouseEvent) {
   e.preventDefault();
@@ -52,6 +88,7 @@ function useToolbarSync(editor: Editor | null) {
     return {
       fontFamily: "",
       fontSize: DEFAULT_FONT_SIZE,
+      align: "left" as TextAlignValue,
       alignLeft: true,
       alignCenter: false,
       alignRight: false,
@@ -60,12 +97,13 @@ function useToolbarSync(editor: Editor | null) {
   }
 
   const textStyle = editor.getAttributes("textStyle") as { fontFamily?: string; fontSize?: string };
-  const align = editor.getAttributes("paragraph").textAlign as string | undefined;
+  const align = getActiveTextAlign(editor);
 
   return {
     fontFamily: matchFontValue(textStyle.fontFamily),
     fontSize: pxToPoints(textStyle.fontSize),
-    alignLeft: !align || align === "left",
+    align,
+    alignLeft: align === "left",
     alignCenter: align === "center",
     alignRight: align === "right",
     alignJustify: align === "justify",
@@ -89,6 +127,7 @@ export function DraftEditor({
   const cloudInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [pageView, setPageView] = useState(true);
 
   const editor = useEditor({
     extensions: [
@@ -99,6 +138,9 @@ export function DraftEditor({
       FontFamily,
       FontSize,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
+      PageBreak,
+      SectionBreak,
+      PageNumber,
     ],
     content: content || "<p></p>",
     editable: !disabled,
@@ -179,7 +221,9 @@ export function DraftEditor({
   }
 
   return (
-    <div className={`draft-editor${disabled ? " draft-editor--readonly" : ""}`}>
+    <div
+      className={`draft-editor${disabled ? " draft-editor--readonly" : ""}${pageView ? " draft-editor--page-view" : ""}`}
+    >
       {!disabled && (
         <div className="draft-editor__toolbar" role="toolbar" aria-label="Formatting toolbar">
           <div className="draft-editor__group" role="group" aria-label="Text style">
@@ -244,35 +288,35 @@ export function DraftEditor({
 
           <div className="draft-editor__divider" aria-hidden />
 
-          <div className="draft-editor__group" role="group" aria-label="Alignment">
-            <RibbonButton
+          <div className="draft-editor__group draft-editor__align-group" role="group" aria-label="Alignment">
+            <AlignButton
               label="Align left"
               active={toolbar.alignLeft}
-              onAction={() => editor.chain().focus().setTextAlign("left").run()}
+              onAction={() => setBlockAlignment(editor, "left")}
             >
-              Left
-            </RibbonButton>
-            <RibbonButton
+              <AlignLeftIcon />
+            </AlignButton>
+            <AlignButton
               label="Align center"
               active={toolbar.alignCenter}
-              onAction={() => editor.chain().focus().setTextAlign("center").run()}
+              onAction={() => setBlockAlignment(editor, "center")}
             >
-              Center
-            </RibbonButton>
-            <RibbonButton
+              <AlignCenterIcon />
+            </AlignButton>
+            <AlignButton
               label="Align right"
               active={toolbar.alignRight}
-              onAction={() => editor.chain().focus().setTextAlign("right").run()}
+              onAction={() => setBlockAlignment(editor, "right")}
             >
-              Right
-            </RibbonButton>
-            <RibbonButton
+              <AlignRightIcon />
+            </AlignButton>
+            <AlignButton
               label="Justify"
               active={toolbar.alignJustify}
-              onAction={() => editor.chain().focus().setTextAlign("justify").run()}
+              onAction={() => setBlockAlignment(editor, "justify")}
             >
-              Justify
-            </RibbonButton>
+              <AlignJustifyIcon />
+            </AlignButton>
           </div>
 
           <div className="draft-editor__divider" aria-hidden />
@@ -318,6 +362,61 @@ export function DraftEditor({
                 ))}
               </select>
             </label>
+          </div>
+
+          <div className="draft-editor__divider" aria-hidden />
+
+          <div className="draft-editor__group" role="group" aria-label="Page layout">
+            <RibbonButton
+              label="Toggle page layout view"
+              active={pageView}
+              onAction={() => setPageView((v) => !v)}
+            >
+              Pages
+            </RibbonButton>
+            <RibbonButton
+              label="Insert page break"
+              active={editor.isActive("pageBreak")}
+              onAction={() => editor.chain().focus().setPageBreak().run()}
+            >
+              Page Break
+            </RibbonButton>
+            <RibbonButton
+              label="Insert section break (next page)"
+              active={
+                editor.isActive("sectionBreak", { sectionType: "next-page" })
+              }
+              onAction={() =>
+                editor.chain().focus().setSectionBreak("next-page").run()
+              }
+            >
+              Section
+            </RibbonButton>
+            <RibbonButton
+              label="Insert section break (continuous)"
+              active={
+                editor.isActive("sectionBreak", { sectionType: "continuous" })
+              }
+              onAction={() =>
+                editor.chain().focus().setSectionBreak("continuous").run()
+              }
+            >
+              Section ↵
+            </RibbonButton>
+            <RibbonButton
+              label="Insert current page number"
+              active={editor.isActive("pageNumber", { numbering: "current" })}
+              onAction={() => editor.chain().focus().insertPageNumber("current").run()}
+            >
+              # Page
+            </RibbonButton>
+            <RibbonButton
+              label="Insert total page count"
+              active={editor.isActive("pageNumber", { numbering: "total" })}
+              onAction={() => editor.chain().focus().insertPageNumber("total").run()}
+            >
+              # Pages
+            </RibbonButton>
           </div>
 
           <div className="draft-editor__divider" aria-hidden />
@@ -411,6 +510,32 @@ export function DraftEditor({
         <EditorContent editor={editor} className="draft-editor__content" />
       </div>
     </div>
+  );
+}
+
+function AlignButton({
+  children,
+  label,
+  onAction,
+  active,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onAction: () => void;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={active ?? false}
+      title={label}
+      onMouseDown={keepFocus}
+      onClick={onAction}
+      className={`draft-editor__align-btn${active ? " draft-editor__align-btn--active" : ""}`}
+    >
+      {children}
+    </button>
   );
 }
 

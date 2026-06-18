@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useState, type ReactNode } from "react";
 import { api, ApiError, NetworkError } from "@/services/api";
 import type { DocumentSummary } from "@/services/api";
 import { PublishDialog } from "@/features/docket/PublishDialog";
@@ -29,24 +29,16 @@ export function DocketWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [showPublish, setShowPublish] = useState(false);
 
-  const docQuery = useQuery({
-    queryKey: ["document", selectedId],
-    queryFn: () => api.getDocument(selectedId!),
-    enabled: Boolean(selectedId) && isAuthor,
-    refetchOnWindowFocus: false,
-  });
-
-  useEffect(() => {
-    const doc = docQuery.data?.document;
-    if (!doc || doc.id !== selectedId) {
-      return;
-    }
-    setTitle(doc.title);
-    setContent(doc.content ?? "");
-  }, [docQuery.data?.document?.id, selectedId]);
-
   const saveMutation = useMutation({
-    mutationFn: () => api.updateDocument(selectedId!, title, content),
+    mutationFn: ({
+      id,
+      draftTitle,
+      draftContent,
+    }: {
+      id: string;
+      draftTitle: string;
+      draftContent: string;
+    }) => api.updateDocument(id, draftTitle, draftContent),
     onSuccess: () => {
       setMessage("Draft saved.");
       queryClient.invalidateQueries({ queryKey: ["docket-workspace"] });
@@ -63,29 +55,7 @@ export function DocketWorkspace() {
     onError: (err: Error) => setError(err.message),
   });
 
-  const autosave = useCallback(() => {
-    if (!selectedId || !isAuthor) return;
-    const doc = workspaceQuery.data?.drafts.find((d) => d.id === selectedId);
-    if (doc?.status === "DRAFT") saveMutation.mutate();
-  }, [selectedId, isAuthor, workspaceQuery.data, saveMutation]);
-
-  useEffect(() => {
-    const onUnload = () => {
-      if (selectedId && isAuthor) autosave();
-    };
-    window.addEventListener("beforeunload", onUnload);
-    return () => window.removeEventListener("beforeunload", onUnload);
-  }, [selectedId, isAuthor, autosave]);
-
-  useEffect(() => {
-    if (!selectedId || !isAuthor) return;
-    const timer = setInterval(autosave, 30_000);
-    return () => clearInterval(timer);
-  }, [selectedId, isAuthor, autosave]);
-
   const ws = workspaceQuery.data;
-  const selected = docQuery.data?.document;
-  const isDraft = selected?.status === "DRAFT";
 
   const selectDoc = (doc: DocumentSummary) => {
     setSelectedId(doc.id);
@@ -94,51 +64,22 @@ export function DocketWorkspace() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="wireframe-panel flex min-h-[70vh] flex-col border-2 border-foreground md:flex-row">
-        <aside className="w-full border-b-2 border-foreground bg-surface p-4 md:w-72 md:border-b-0 md:border-r-2">
-          <section className="mb-6">
-            <h2 className="text-xs font-bold uppercase tracking-wide">Subscribed</h2>
-            <p className="mt-1 text-xs text-muted">Phase 4: library subscriptions</p>
-            {ws?.subscribedItems.length === 0 && (
-              <p className="mt-2 text-sm text-muted">No subscriptions yet.</p>
-            )}
-          </section>
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      {isAuthor && (
+        <DocketShelf
+          ws={ws}
+          selectedId={selectedId}
+          onSelect={selectDoc}
+          onNew={() => {
+            setSelectedId(null);
+            setTitle("New draft");
+            setContent("");
+          }}
+        />
+      )}
 
-          {isAuthor && (
-            <>
-              <section className="mb-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <h2 className="text-xs font-bold uppercase">Drafts</h2>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedId(null);
-                      setTitle("New draft");
-                      setContent("");
-                    }}
-                    className="border border-foreground px-2 py-0.5 text-xs font-bold uppercase"
-                  >
-                    New
-                  </button>
-                </div>
-                <DocList items={ws?.drafts ?? []} selectedId={selectedId} onSelect={selectDoc} />
-              </section>
-              <section>
-                <h2 className="mb-2 text-xs font-bold uppercase">Published</h2>
-                <DocList items={ws?.published ?? []} selectedId={selectedId} onSelect={selectDoc} />
-              </section>
-            </>
-          )}
-
-          {!isAuthor && (
-            <p className="text-sm text-muted">
-              Your personal docket is ready. Apply for author status to write manuscripts.
-            </p>
-          )}
-        </aside>
-
-        <section className="flex flex-1 flex-col bg-background p-4">
+      <div className="wireframe-panel flex min-h-0 flex-1 flex-col border-2 border-foreground">
+        <section className="flex min-h-0 flex-1 flex-col bg-background p-3 md:p-4">
           {!isAuthor ? (
             <ReaderDocketPanel ws={ws} />
           ) : !selectedId ? (
@@ -151,28 +92,38 @@ export function DocketWorkspace() {
               creating={createMutation.isPending}
             />
           ) : (
-            <AuthorEditorPanel
-              title={title}
-              content={content}
-              isDraft={isDraft}
-              onTitle={setTitle}
-              onContent={setContent}
-              onSave={() => saveMutation.mutate()}
-              onPublish={() => setShowPublish(true)}
+            <SelectedDraftEditor
+              key={selectedId}
+              documentId={selectedId}
+              onSave={(draftTitle, draftContent) =>
+                saveMutation.mutate({
+                  id: selectedId,
+                  draftTitle,
+                  draftContent,
+                })
+              }
+              onPublish={(draftTitle, draftContent) => {
+                setTitle(draftTitle);
+                setContent(draftContent);
+                setShowPublish(true);
+              }}
               onDelete={async () => {
                 await api.deleteDocument(selectedId);
                 setSelectedId(null);
                 queryClient.invalidateQueries({ queryKey: ["docket-workspace"] });
               }}
               saving={saveMutation.isPending}
-              selectedId={selectedId}
             />
           )}
         </section>
       </div>
 
-      {message && <p className="text-sm text-success">{message}</p>}
-      {error && <p className="text-sm text-danger" role="alert">{error}</p>}
+      {message && <p className="shrink-0 text-sm text-success">{message}</p>}
+      {error && (
+        <p className="shrink-0 text-sm text-danger" role="alert">
+          {error}
+        </p>
+      )}
 
       {showPublish && selectedId && isAuthor && (
         <PublishDialog
@@ -191,7 +142,82 @@ export function DocketWorkspace() {
   );
 }
 
-function DocList({
+function DocketShelf({
+  ws,
+  selectedId,
+  onSelect,
+  onNew,
+}: {
+  ws?: Awaited<ReturnType<typeof api.getDocketWorkspace>>;
+  selectedId: string | null;
+  onSelect: (d: DocumentSummary) => void;
+  onNew: () => void;
+}) {
+  return (
+    <div className="shrink-0 border-2 border-foreground bg-surface">
+      <div className="overflow-x-auto">
+        <div className="flex min-w-max items-stretch gap-4 p-3">
+          <ShelfSection label="Subscribed">
+            {ws?.subscribedItems.length ? (
+              <p className="text-xs text-muted">Subscriptions appear here in Phase 4.</p>
+            ) : (
+              <p className="whitespace-nowrap text-xs text-muted">No subscriptions yet.</p>
+            )}
+          </ShelfSection>
+
+          <ShelfDivider />
+
+          <ShelfSection
+            label="Drafts"
+            action={
+              <button
+                type="button"
+                onClick={onNew}
+                className="border border-foreground px-2 py-0.5 text-xs font-bold uppercase"
+              >
+                New
+              </button>
+            }
+          >
+            <DocStrip items={ws?.drafts ?? []} selectedId={selectedId} onSelect={onSelect} />
+          </ShelfSection>
+
+          <ShelfDivider />
+
+          <ShelfSection label="Published">
+            <DocStrip items={ws?.published ?? []} selectedId={selectedId} onSelect={onSelect} />
+          </ShelfSection>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShelfDivider() {
+  return <div className="w-px shrink-0 self-stretch bg-border" aria-hidden />;
+}
+
+function ShelfSection({
+  label,
+  action,
+  children,
+}: {
+  label: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex min-w-[10rem] flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <h2 className="whitespace-nowrap text-xs font-bold uppercase tracking-wide">{label}</h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function DocStrip({
   items,
   selectedId,
   onSelect,
@@ -200,18 +226,22 @@ function DocList({
   selectedId: string | null;
   onSelect: (d: DocumentSummary) => void;
 }) {
+  if (items.length === 0) {
+    return <p className="whitespace-nowrap text-xs text-muted">None yet.</p>;
+  }
+
   return (
-    <ul className="flex flex-col gap-2">
+    <ul className="flex gap-2">
       {items.map((doc) => (
-        <li key={doc.id}>
+        <li key={doc.id} className="shrink-0">
           <button
             type="button"
             onClick={() => onSelect(doc)}
-            className={`w-full border-2 border-foreground px-2 py-2 text-left text-sm hover:bg-background ${
+            className={`flex h-full min-w-[9rem] max-w-[12rem] flex-col border-2 border-foreground px-3 py-2 text-left text-sm hover:bg-background ${
               selectedId === doc.id ? "bg-background font-bold" : ""
             }`}
           >
-            <span className="block truncate">{doc.title}</span>
+            <span className="line-clamp-2">{doc.title}</span>
             <span className="mt-1 text-xs uppercase text-muted">{doc.status}</span>
           </button>
         </li>
@@ -303,7 +333,7 @@ function AuthorNewDraftPanel({
   creating: boolean;
 }) {
   return (
-    <div className="flex flex-1 flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <input
         value={title}
         onChange={(e) => onTitle(e.target.value)}
@@ -323,50 +353,93 @@ function AuthorNewDraftPanel({
   );
 }
 
-function AuthorEditorPanel({
-  title,
-  content,
-  isDraft,
-  onTitle,
-  onContent,
+function SelectedDraftEditor({
+  documentId,
   onSave,
   onPublish,
   onDelete,
   saving,
-  selectedId,
 }: {
-  title: string;
-  content: string;
-  isDraft: boolean;
-  onTitle: (v: string) => void;
-  onContent: (v: string) => void;
-  onSave: () => void;
-  onPublish: () => void;
+  documentId: string;
+  onSave: (title: string, content: string) => void;
+  onPublish: (title: string, content: string) => void;
   onDelete: () => void;
   saving: boolean;
-  selectedId: string;
 }) {
+  const docQuery = useQuery({
+    queryKey: ["document", documentId],
+    queryFn: () => api.getDocument(documentId),
+    refetchOnWindowFocus: false,
+  });
+
+  if (docQuery.isLoading) {
+    return <p className="text-sm text-muted">Loading draft...</p>;
+  }
+
+  const document = docQuery.data?.document;
+  if (!document) {
+    return <p className="text-sm text-danger">Could not load this draft.</p>;
+  }
+
   return (
-    <div className="flex flex-1 flex-col gap-4">
+    <LoadedDraftEditor
+      key={documentId}
+      document={document}
+      onSave={onSave}
+      onPublish={onPublish}
+      onDelete={onDelete}
+      saving={saving}
+    />
+  );
+}
+
+function LoadedDraftEditor({
+  document,
+  onSave,
+  onPublish,
+  onDelete,
+  saving,
+}: {
+  document: { id: string; title: string; content?: string; status: string };
+  onSave: (title: string, content: string) => void;
+  onPublish: (title: string, content: string) => void;
+  onDelete: () => void;
+  saving: boolean;
+}) {
+  const [title, setTitle] = useState(document.title);
+  const [content, setContent] = useState(document.content ?? "");
+  const isDraft = document.status === "DRAFT";
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <input
         value={title}
-        onChange={(e) => onTitle(e.target.value)}
+        onChange={(e) => setTitle(e.target.value)}
         disabled={!isDraft}
         className="border-2 border-foreground bg-background px-3 py-2 font-bold disabled:opacity-70"
       />
       <DraftEditor
         content={content}
-        onChange={onContent}
+        onChange={setContent}
         disabled={!isDraft}
         placeholder={isDraft ? "Write or import your manuscript..." : "Published — read-only view"}
       />
       <div className="flex flex-wrap gap-2">
         {isDraft && (
           <>
-            <button type="button" onClick={onSave} disabled={saving} className="border-2 border-foreground px-4 py-2 text-sm font-bold uppercase">
+            <button
+              type="button"
+              onClick={() => onSave(title, content)}
+              disabled={saving}
+              className="border-2 border-foreground px-4 py-2 text-sm font-bold uppercase"
+            >
               Save
             </button>
-            <button type="button" onClick={onPublish} className="border-2 border-foreground bg-foreground px-4 py-2 text-sm font-bold uppercase text-background">
+            <button
+              type="button"
+              onClick={() => onPublish(title, content)}
+              className="border-2 border-foreground bg-foreground px-4 py-2 text-sm font-bold uppercase text-background"
+            >
               Publish
             </button>
             <button type="button" onClick={onDelete} className="border-2 border-foreground px-4 py-2 text-sm uppercase">
@@ -374,7 +447,7 @@ function AuthorEditorPanel({
             </button>
           </>
         )}
-        {!isDraft && <UnpublishRequestForm documentId={selectedId} />}
+        {!isDraft && <UnpublishRequestForm documentId={document.id} />}
       </div>
     </div>
   );

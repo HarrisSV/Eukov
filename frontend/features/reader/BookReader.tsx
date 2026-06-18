@@ -60,6 +60,18 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
     utteranceRef.current = null;
   }, []);
 
+  const changePage = useCallback(
+    (next: number | ((current: number) => number)) => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      utteranceRef.current = null;
+      setPlaying(false);
+      setPage(next);
+    },
+    [],
+  );
+
   const speakPage = useCallback(() => {
     const text = pageQuery.data?.content;
     if (!text || typeof window === "undefined" || !window.speechSynthesis) {
@@ -75,17 +87,20 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
   }, [pageQuery.data?.content, rate, stopSpeech]);
 
   useEffect(() => {
-    stopSpeech();
-  }, [page, stopSpeech]);
-
-  useEffect(() => {
     if (pageQuery.isSuccess) {
       progressMutation.mutate(page);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageQuery.isSuccess]);
 
-  useEffect(() => () => stopSpeech(), [stopSpeech]);
+  useEffect(
+    () => () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    },
+    [],
+  );
 
   const totalPages = pageQuery.data?.totalPages ?? 1;
   const title = pageQuery.data?.title ?? "Loading...";
@@ -147,7 +162,7 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
         <button
           type="button"
           disabled={page <= 1}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          onClick={() => changePage((p) => Math.max(1, p - 1))}
           className="border-2 border-foreground bg-background px-4 py-2 text-sm text-foreground disabled:opacity-50"
         >
           Previous
@@ -155,7 +170,7 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
         <button
           type="button"
           disabled={page >= totalPages}
-          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          onClick={() => changePage((p) => Math.min(totalPages, p + 1))}
           className="border-2 border-foreground bg-background px-4 py-2 text-sm text-foreground disabled:opacity-50"
         >
           Next
@@ -169,7 +184,7 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
             value={page}
             onChange={(e) => {
               const next = Number(e.target.value);
-              if (next >= 1 && next <= totalPages) setPage(next);
+              if (next >= 1 && next <= totalPages) changePage(next);
             }}
             className="w-16 border-2 border-foreground bg-surface px-2 py-1"
           />

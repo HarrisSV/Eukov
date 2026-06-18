@@ -4,7 +4,6 @@ import { injectAuthSession, waitForAuthRole } from "./helpers/auth-session";
 import {
   API_BASE,
   assertBackendHealthy,
-  createAdminSession,
   createAuthorSession,
   createDocument,
   publishDocument,

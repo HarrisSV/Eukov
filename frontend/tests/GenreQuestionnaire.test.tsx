@@ -71,7 +71,7 @@ describe("GenreQuestionnaire", () => {
     await user.click(screen.getByRole("button", { name: "Continue to Dashboard" }));
 
     await waitFor(() => {
-      expect(savePreferencesMock).toHaveBeenCalledWith("user-123", ["history", "science"]);
+      expect(savePreferencesMock).toHaveBeenCalledWith(["history", "science"]);
       expect(pushMock).toHaveBeenCalledWith("/dashboard");
     });
   });

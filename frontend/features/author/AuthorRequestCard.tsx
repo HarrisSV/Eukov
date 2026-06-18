@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Card } from "@/components/ui/Card";
-import { api, ApiError, NetworkError } from "@/services/api";
+import { api, ApiError } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import { roles } from "@/lib/roles";
 
