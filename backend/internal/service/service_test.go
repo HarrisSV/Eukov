@@ -21,7 +21,7 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	stmts := []string{
-		`CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL, token_version INTEGER NOT NULL DEFAULT 1, created_at DATETIME, updated_at DATETIME);`,
+		`CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL, first_name TEXT, middle_name TEXT, last_name TEXT, nickname TEXT, token_version INTEGER NOT NULL DEFAULT 1, created_at DATETIME, updated_at DATETIME);`,
 		`CREATE TABLE genres (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE);`,
 		`CREATE TABLE user_genres (user_id TEXT NOT NULL, genre_id TEXT NOT NULL, PRIMARY KEY (user_id, genre_id));`,
 		`CREATE TABLE dockets (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, created_at DATETIME);`,
@@ -80,6 +80,31 @@ func TestUserService_RegisterAndLogin(t *testing.T) {
 	}
 }
 
+func TestUserService_EmailCaseInsensitive(t *testing.T) {
+	db := setupServiceTestDB(t)
+	svc := NewUserService(repository.NewUserRepository(db))
+	password := "password123"
+
+	_, err := svc.Register(context.Background(), RegisterInput{
+		Email:    "Reader@Example.COM",
+		Password: password,
+	})
+	if err != nil {
+		t.Fatalf("register user: %v", err)
+	}
+
+	loginResult, err := svc.Login(context.Background(), LoginInput{
+		Email:    "  READER@example.com  ",
+		Password: password,
+	})
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+	if loginResult.Email != "reader@example.com" {
+		t.Fatalf("expected lowercase email, got %s", loginResult.Email)
+	}
+}
+
 func TestUserService_DuplicateEmail(t *testing.T) {
 	db := setupServiceTestDB(t)
 	svc := NewUserService(repository.NewUserRepository(db))
@@ -93,7 +118,7 @@ func TestUserService_DuplicateEmail(t *testing.T) {
 	}
 
 	_, err = svc.Register(context.Background(), RegisterInput{
-		Email:    "reader@example.com",
+		Email:    "Reader@Example.com",
 		Password: "password123",
 	})
 	if !errors.Is(err, repository.ErrUserAlreadyExists) {

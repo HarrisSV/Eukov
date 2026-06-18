@@ -33,9 +33,7 @@ func seedUser(t *testing.T, db *gorm.DB, email, password, role string) uuid.UUID
 
 func TestLoginReturnsTokens(t *testing.T) {
 	r, _ := setupTestHandler(t)
-	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
-		"email": "reader@example.com", "password": "password123",
-	})
+	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", testRegisterBody("reader@example.com", "password123"))
 
 	resp := doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/login", map[string]string{
 		"email": "reader@example.com", "password": "password123",
@@ -64,9 +62,7 @@ func TestLoginReturnsTokens(t *testing.T) {
 
 func TestRefreshAndLogout(t *testing.T) {
 	r, _ := setupTestHandler(t)
-	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
-		"email": "reader@example.com", "password": "password123",
-	})
+	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", testRegisterBody("reader@example.com", "password123"))
 	loginResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/login", map[string]string{
 		"email": "reader@example.com", "password": "password123",
 	})

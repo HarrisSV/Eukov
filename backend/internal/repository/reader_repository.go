@@ -78,6 +78,15 @@ func (r *AuthorSubscriptionRepository) ListByReader(ctx context.Context, readerI
 	return subs, err
 }
 
+func (r *AuthorSubscriptionRepository) ListReadersByAuthor(ctx context.Context, authorID uuid.UUID) ([]uuid.UUID, error) {
+	var readerIDs []uuid.UUID
+	err := r.db.WithContext(ctx).
+		Model(&models.AuthorSubscription{}).
+		Where("author_id = ?", authorID).
+		Pluck("reader_id", &readerIDs).Error
+	return readerIDs, err
+}
+
 type IssuedBookRepository struct {
 	db *gorm.DB
 }

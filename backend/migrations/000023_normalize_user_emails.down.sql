@@ -1,0 +1,1 @@
+-- Email casing cannot be restored once normalized.

@@ -8,7 +8,6 @@ import (
 	"github.com/eukov/backend/internal/models"
 	"github.com/eukov/backend/internal/middleware"
 	"github.com/eukov/backend/internal/repository"
-	"github.com/eukov/backend/internal/roles"
 	"github.com/eukov/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -21,16 +20,36 @@ type tokenResponse struct {
 }
 
 type userProfileResponse struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	ID         string `json:"id"`
+	Email      string `json:"email"`
+	Role       string `json:"role"`
+	FirstName  string `json:"firstName"`
+	MiddleName string `json:"middleName"`
+	LastName   string `json:"lastName"`
+	Nickname   string `json:"nickname"`
 }
 
 func toProfile(p service.UserProfile) userProfileResponse {
 	return userProfileResponse{
-		ID:    p.ID.String(),
-		Email: p.Email,
-		Role:  p.Role,
+		ID:         p.ID.String(),
+		Email:      p.Email,
+		Role:       p.Role,
+		FirstName:  p.FirstName,
+		MiddleName: p.MiddleName,
+		LastName:   p.LastName,
+		Nickname:   p.Nickname,
+	}
+}
+
+func profileFromUser(user *models.User) userProfileResponse {
+	return userProfileResponse{
+		ID:         user.ID.String(),
+		Email:      user.Email,
+		Role:       user.Role,
+		FirstName:  user.FirstName,
+		MiddleName: user.MiddleName,
+		LastName:   user.LastName,
+		Nickname:   user.Nickname,
 	}
 }
 
@@ -43,7 +62,7 @@ type logoutRequest struct {
 }
 
 func (h *Handler) Login(c *gin.Context) {
-	var req registerRequest
+	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
@@ -134,11 +153,7 @@ func (h *Handler) Me(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	c.JSON(http.StatusOK, userProfileResponse{
-		ID:    user.ID.String(),
-		Email: user.Email,
-		Role:  user.Role,
-	})
+	c.JSON(http.StatusOK, profileFromUser(user))
 }
 
 type generateAccessKeyResponse struct {
@@ -188,7 +203,8 @@ func (h *Handler) ConsumeAccessKey(c *gin.Context) {
 		return
 	}
 
-	if err := h.accessKeys.Consume(c.Request.Context(), user.ID, req.AccessKey); err != nil {
+	result, err := h.accessKeys.Consume(c.Request.Context(), user.ID, req.AccessKey)
+	if err != nil {
 		if errors.Is(err, service.ErrAccessKeyInvalid) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or expired access key"})
 			return
@@ -197,7 +213,7 @@ func (h *Handler) ConsumeAccessKey(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "role": roles.Admin})
+	c.JSON(http.StatusOK, gin.H{"success": true, "role": result.Role})
 }
 
 type submitAuthorApplicationRequest struct {
@@ -243,20 +259,13 @@ func (h *Handler) SubmitAuthorApplication(c *gin.Context) {
 }
 
 func (h *Handler) ListAuthorApplications(c *gin.Context) {
-	status := c.DefaultQuery("status", "PENDING")
-	var apps []models.AuthorApplication
-	var err error
-	if status == "PENDING" {
-		apps, err = h.authorApps.ListPending(c.Request.Context())
-	} else {
-		apps, err = h.authorApps.ListByStatus(c.Request.Context(), status)
-	}
+	views, err := h.authorApps.ListPendingViews(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list applications"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"applications": apps})
+	c.JSON(http.StatusOK, gin.H{"applications": views})
 }
 
 func (h *Handler) ApproveAuthorApplication(c *gin.Context) {

@@ -27,6 +27,7 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	if user.ID == uuid.Nil {
 		user.ID = uuid.New()
 	}
+	user.Email = NormalizeEmail(user.Email)
 
 	existing, err := r.FindByEmail(ctx, user.Email)
 	if err != nil && !errors.Is(err, ErrUserNotFound) {
@@ -45,7 +46,7 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
 	var user models.User
-	result := r.db.WithContext(ctx).Where("email = ?", email).First(&user)
+	result := r.db.WithContext(ctx).Where("email = ?", NormalizeEmail(email)).First(&user)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound

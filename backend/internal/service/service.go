@@ -19,8 +19,12 @@ var (
 )
 
 type RegisterInput struct {
-	Email    string `validate:"required,email"`
-	Password string `validate:"required,min=8"`
+	Email      string `validate:"required,email"`
+	Password   string `validate:"required,min=8"`
+	FirstName  string `validate:"required"`
+	MiddleName string
+	LastName   string `validate:"required"`
+	Nickname   string `validate:"required"`
 }
 
 type RegisterResult struct {
@@ -57,9 +61,13 @@ func (s *UserService) Register(ctx context.Context, input RegisterInput) (*Regis
 	}
 
 	user := &models.User{
-		Email:        input.Email,
+		Email:        repository.NormalizeEmail(input.Email),
 		PasswordHash: string(hash),
 		Role:         "READER",
+		FirstName:    input.FirstName,
+		MiddleName:   input.MiddleName,
+		LastName:     input.LastName,
+		Nickname:     input.Nickname,
 	}
 
 	if err := s.users.Create(ctx, user); err != nil {
@@ -74,7 +82,7 @@ func (s *UserService) FindByID(ctx context.Context, id uuid.UUID) (*models.User,
 }
 
 func (s *UserService) Login(ctx context.Context, input LoginInput) (*LoginResult, error) {
-	user, err := s.users.FindByEmail(ctx, input.Email)
+	user, err := s.users.FindByEmail(ctx, repository.NormalizeEmail(input.Email))
 	if err != nil {
 		if errors.Is(err, repository.ErrUserNotFound) {
 			return nil, ErrInvalidCredentials
@@ -152,12 +160,17 @@ func NewStorageService(basePath string) *StorageService {
 	return &StorageService{basePath: basePath}
 }
 
+func (s *StorageService) BasePath() string {
+	return s.basePath
+}
+
 func (s *StorageService) EnsureDirectories() error {
 	dirs := []string{
 		s.basePath,
 		filepath.Join(s.basePath, "dockets"),
 		filepath.Join(s.basePath, "documents"),
 		filepath.Join(s.basePath, "temp"),
+		filepath.Join(s.basePath, "author-applications"),
 	}
 
 	for _, dir := range dirs {

@@ -39,9 +39,13 @@ type SessionTokens struct {
 }
 
 type UserProfile struct {
-	ID    uuid.UUID
-	Email string
-	Role  string
+	ID         uuid.UUID
+	Email      string
+	Role       string
+	FirstName  string
+	MiddleName string
+	LastName   string
+	Nickname   string
 }
 
 type LoginSessionResult struct {
@@ -75,9 +79,13 @@ func (s *AuthSessionService) IssueTokens(ctx context.Context, user *models.User)
 			RefreshToken: refreshPlain,
 		},
 		Profile: UserProfile{
-			ID:    user.ID,
-			Email: user.Email,
-			Role:  user.Role,
+			ID:         user.ID,
+			Email:      user.Email,
+			Role:       user.Role,
+			FirstName:  user.FirstName,
+			MiddleName: user.MiddleName,
+			LastName:   user.LastName,
+			Nickname:   user.Nickname,
 		},
 	}, nil
 }

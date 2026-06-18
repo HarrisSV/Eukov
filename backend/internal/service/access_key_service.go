@@ -20,17 +20,27 @@ var (
 )
 
 type AccessKeyService struct {
-	keys  *repository.AccessKeyRepository
-	users *repository.UserRepository
-	audit *AuditService
+	keys     *repository.AccessKeyRepository
+	users    *repository.UserRepository
+	apps     *repository.AuthorApplicationRepository
+	audit    *AuditService
+	inbox    *InboxService
 }
 
 func NewAccessKeyService(
 	keys *repository.AccessKeyRepository,
 	users *repository.UserRepository,
+	apps *repository.AuthorApplicationRepository,
 	audit *AuditService,
+	inbox *InboxService,
 ) *AccessKeyService {
-	return &AccessKeyService{keys: keys, users: users, audit: audit}
+	return &AccessKeyService{
+		keys:  keys,
+		users: users,
+		apps:  apps,
+		audit: audit,
+		inbox: inbox,
+	}
 }
 
 type GeneratedAccessKey struct {
@@ -39,9 +49,29 @@ type GeneratedAccessKey struct {
 	ExpiresAt time.Time
 }
 
+type GenerateAccessKeyInput struct {
+	CreatedBy     uuid.UUID
+	TTL           time.Duration
+	TargetRole    string
+	ApplicationID *uuid.UUID
+}
+
 func (s *AccessKeyService) Generate(ctx context.Context, createdBy uuid.UUID, ttl time.Duration) (*GeneratedAccessKey, error) {
+	return s.GenerateFor(ctx, GenerateAccessKeyInput{
+		CreatedBy:  createdBy,
+		TTL:        ttl,
+		TargetRole: roles.Admin,
+	})
+}
+
+func (s *AccessKeyService) GenerateFor(ctx context.Context, input GenerateAccessKeyInput) (*GeneratedAccessKey, error) {
+	ttl := input.TTL
 	if ttl <= 0 {
 		ttl = 7 * 24 * time.Hour
+	}
+	targetRole := input.TargetRole
+	if targetRole == "" {
+		targetRole = roles.Admin
 	}
 
 	plain, err := generatePlainAccessKey()
@@ -55,18 +85,21 @@ func (s *AccessKeyService) Generate(ctx context.Context, createdBy uuid.UUID, tt
 	}
 
 	record := &models.AccessKey{
-		KeyHash:   hash,
-		CreatedBy: createdBy,
-		ExpiresAt: time.Now().Add(ttl),
-		Status:    "ACTIVE",
+		KeyHash:       hash,
+		CreatedBy:     input.CreatedBy,
+		TargetRole:    targetRole,
+		ApplicationID: input.ApplicationID,
+		ExpiresAt:     time.Now().Add(ttl),
+		Status:        "ACTIVE",
 	}
 	if err := s.keys.Create(ctx, record); err != nil {
 		return nil, err
 	}
 
-	actorID := createdBy
+	actorID := input.CreatedBy
 	if err := s.audit.Record(ctx, &actorID, "ACCESS_KEY_GENERATED", "access_key", &record.ID, map[string]any{
-		"expiresAt": record.ExpiresAt,
+		"expiresAt":  record.ExpiresAt,
+		"targetRole": targetRole,
 	}); err != nil {
 		return nil, err
 	}
@@ -78,18 +111,19 @@ func (s *AccessKeyService) Generate(ctx context.Context, createdBy uuid.UUID, tt
 	}, nil
 }
 
-func (s *AccessKeyService) Consume(ctx context.Context, userID uuid.UUID, plainKey string) error {
+type ConsumeAccessKeyResult struct {
+	Role string
+}
+
+func (s *AccessKeyService) Consume(ctx context.Context, userID uuid.UUID, plainKey string) (*ConsumeAccessKeyResult, error) {
 	user, err := s.users.FindByID(ctx, userID)
 	if err != nil {
-		return err
-	}
-	if user.Role == roles.Admin || user.Role == roles.SuperAdmin {
-		return errors.New("user already has admin privileges")
+		return nil, err
 	}
 
 	keys, err := s.keys.ListActiveUnconsumed(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var matched *models.AccessKey
@@ -100,15 +134,31 @@ func (s *AccessKeyService) Consume(ctx context.Context, userID uuid.UUID, plainK
 		}
 	}
 	if matched == nil {
-		return ErrAccessKeyInvalid
+		return nil, ErrAccessKeyInvalid
 	}
 	if time.Now().After(matched.ExpiresAt) {
 		matched.Status = "EXPIRED"
 		_ = s.keys.Update(ctx, matched)
-		return ErrAccessKeyInvalid
+		return nil, ErrAccessKeyInvalid
 	}
 	if matched.Status != "ACTIVE" {
-		return ErrAccessKeyUsed
+		return nil, ErrAccessKeyUsed
+	}
+
+	targetRole := matched.TargetRole
+	if targetRole == "" {
+		targetRole = roles.Admin
+	}
+
+	if err := s.validateConsumeTarget(user.Role, targetRole); err != nil {
+		return nil, err
+	}
+
+	if matched.ApplicationID != nil && s.apps != nil {
+		app, err := s.apps.FindByID(ctx, *matched.ApplicationID)
+		if err != nil || app.UserID != userID {
+			return nil, ErrAccessKeyInvalid
+		}
 	}
 
 	now := time.Now()
@@ -116,17 +166,52 @@ func (s *AccessKeyService) Consume(ctx context.Context, userID uuid.UUID, plainK
 	matched.ConsumedBy = &userID
 	matched.ConsumedAt = &now
 	if err := s.keys.Update(ctx, matched); err != nil {
-		return err
+		return nil, err
 	}
 
-	if err := s.users.UpdateRole(ctx, userID, roles.Admin); err != nil {
-		return err
+	if err := s.users.UpdateRole(ctx, userID, targetRole); err != nil {
+		return nil, err
+	}
+
+	if matched.ApplicationID != nil && s.apps != nil && targetRole == roles.Author {
+		app, err := s.apps.FindByID(ctx, *matched.ApplicationID)
+		if err == nil && app.Status != "APPROVED" {
+			app.Status = "APPROVED"
+			app.ReviewedAt = &now
+			app.UpdatedAt = now
+			_ = s.apps.Update(ctx, app)
+		}
 	}
 
 	actorID := userID
-	return s.audit.Record(ctx, &actorID, "ADMIN_PROMOTED", "user", &userID, map[string]any{
+	_ = s.audit.Record(ctx, &actorID, "ACCESS_KEY_CONSUMED", "user", &userID, map[string]any{
 		"accessKeyId": matched.ID,
+		"targetRole":  targetRole,
 	})
+
+	if s.inbox != nil && targetRole == roles.Author {
+		body := "Your access key was accepted. You are now an Author — open your Docket to start writing."
+		_ = s.inbox.NotifyUser(ctx, userID, nil, InboxTypeAuthorPromoted,
+			"You are now an Author", body, matched.ApplicationID, nil)
+	}
+
+	return &ConsumeAccessKeyResult{Role: targetRole}, nil
+}
+
+func (s *AccessKeyService) validateConsumeTarget(currentRole, targetRole string) error {
+	switch targetRole {
+	case roles.Author:
+		if currentRole != roles.Reader {
+			return errors.New("only readers can redeem author access keys")
+		}
+	case roles.Admin:
+		if currentRole == roles.Admin || currentRole == roles.SuperAdmin {
+			return errors.New("user already has admin privileges")
+		}
+	default:
+		return errors.New("unsupported access key type")
+	}
+	return nil
 }
 
 func generatePlainAccessKey() (string, error) {

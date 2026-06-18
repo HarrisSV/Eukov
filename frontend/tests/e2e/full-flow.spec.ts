@@ -7,6 +7,9 @@ test.describe("Full Registration Flow", () => {
 
     await page.goto("/register");
 
+    await page.locator("#firstName").fill("Reader");
+    await page.locator("#lastName").fill("Example");
+    await page.locator("#nickname").fill("reader");
     await page.locator("#email").fill(email);
     await page.locator("#password").fill(password);
     await page.locator("#confirmPassword").fill(password);
@@ -23,7 +26,9 @@ test.describe("Full Registration Flow", () => {
 
     await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
     await expect(page.getByRole("heading", { name: "Reader Dashboard" })).toBeVisible();
-    await expect(page.getByText(`Welcome back, ${email}`)).toBeVisible();
+    await expect(page.getByText("Welcome back,")).toBeVisible();
+    await expect(page.getByText("reader", { exact: true })).toBeVisible();
+    await expect(page.getByText("Reader Example")).toBeVisible();
     await expect(page.getByText("Philosophy")).toBeVisible();
     await expect(page.getByText("History")).toBeVisible();
     await expect(page.getByText("Healthy")).toBeVisible();

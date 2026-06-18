@@ -57,6 +57,8 @@ func setupRouterFromDB(t *testing.T, db *gorm.DB) *gin.Engine {
 	prefRepo := repository.NewPreferenceRepository(db)
 	accessKeyRepo := repository.NewAccessKeyRepository(db)
 	authorAppRepo := repository.NewAuthorApplicationRepository(db)
+	attachmentRepo := repository.NewApplicationAttachmentRepository(db)
+	inboxRepo := repository.NewInboxRepository(db)
 	auditRepo := repository.NewAuditLogRepository(db)
 	refreshRepo := repository.NewRefreshTokenRepository(db)
 
@@ -70,15 +72,16 @@ func setupRouterFromDB(t *testing.T, db *gorm.DB) *gin.Engine {
 	}
 	sessionSvc := service.NewAuthSessionService(userRepo, refreshRepo, jwtSvc)
 	auditSvc := service.NewAuditService(auditRepo)
-	accessKeySvc := service.NewAccessKeyService(accessKeyRepo, userRepo, auditSvc)
-	authorAppSvc := service.NewAuthorApplicationService(authorAppRepo, userRepo, auditSvc)
+	inboxSvc := service.NewInboxService(inboxRepo, userRepo)
+	accessKeySvc := service.NewAccessKeyService(accessKeyRepo, userRepo, authorAppRepo, auditSvc, inboxSvc)
+	authorAppSvc := service.NewAuthorApplicationService(authorAppRepo, attachmentRepo, userRepo, auditSvc, inboxSvc, accessKeySvc)
 	documentSvc := newTestDocumentService(t, db, auditSvc)
 	docketSvc := newTestDocketService(db)
 	adminActivitySvc := newTestAdminActivityService(db)
 	phase4 := newTestPhase4Services(t, db, auditSvc)
 
 	h := NewHandler(
-		userSvc, genreSvc, prefSvc, storageSvc, sessionSvc, accessKeySvc, authorAppSvc, auditSvc,
+		userSvc, genreSvc, prefSvc, storageSvc, sessionSvc, accessKeySvc, authorAppSvc, auditSvc, inboxSvc,
 		documentSvc, docketSvc, adminActivitySvc,
 		phase4.library, phase4.recommendations, phase4.subscriptions, phase4.issuance, phase4.progress, phase4.reading,
 	)
@@ -162,6 +165,16 @@ func newTestPhase4Services(t *testing.T, db *gorm.DB, auditSvc *service.AuditSer
 	}
 }
 
+func testRegisterBody(email, password string) map[string]string {
+	return map[string]string{
+		"email":      email,
+		"password":   password,
+		"firstName":  "Test",
+		"lastName":   "User",
+		"nickname":   "tester",
+	}
+}
+
 func createSQLiteSchema(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	stmts := []string{
@@ -170,6 +183,10 @@ func createSQLiteSchema(t *testing.T, db *gorm.DB) {
 			email TEXT NOT NULL UNIQUE,
 			password_hash TEXT NOT NULL,
 			role TEXT NOT NULL,
+			first_name TEXT,
+			middle_name TEXT,
+			last_name TEXT,
+			nickname TEXT,
 			token_version INTEGER NOT NULL DEFAULT 1,
 			created_at DATETIME,
 			updated_at DATETIME
@@ -246,6 +263,8 @@ func createSQLiteSchema(t *testing.T, db *gorm.DB) {
 			key_hash TEXT NOT NULL,
 			created_by TEXT NOT NULL,
 			consumed_by TEXT,
+			target_role TEXT NOT NULL DEFAULT 'ADMIN',
+			application_id TEXT,
 			expires_at DATETIME NOT NULL,
 			consumed_at DATETIME,
 			status TEXT NOT NULL,
@@ -254,13 +273,40 @@ func createSQLiteSchema(t *testing.T, db *gorm.DB) {
 		`CREATE TABLE author_applications (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL,
-			qualifications TEXT NOT NULL,
-			experience TEXT NOT NULL,
+			subject TEXT NOT NULL DEFAULT '',
+			message_body TEXT NOT NULL DEFAULT '',
+			qualifications TEXT NOT NULL DEFAULT '',
+			experience TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,
+			admin_reply TEXT,
+			admin_reply_by TEXT,
+			admin_reply_at DATETIME,
+			replied_access_key TEXT,
 			reviewed_by TEXT,
 			reviewed_at DATETIME,
 			created_at DATETIME,
 			updated_at DATETIME
+		);`,
+		`CREATE TABLE author_application_attachments (
+			id TEXT PRIMARY KEY,
+			application_id TEXT NOT NULL,
+			file_name TEXT NOT NULL,
+			stored_path TEXT NOT NULL,
+			mime_type TEXT,
+			file_size INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME
+		);`,
+		`CREATE TABLE inbox_messages (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			sender_id TEXT,
+			message_type TEXT NOT NULL,
+			subject TEXT NOT NULL,
+			body TEXT NOT NULL,
+			related_id TEXT,
+			read_at DATETIME,
+			metadata TEXT NOT NULL DEFAULT '{}',
+			created_at DATETIME
 		);`,
 		`CREATE TABLE audit_logs (
 			id TEXT PRIMARY KEY,
@@ -379,10 +425,7 @@ func TestHealth(t *testing.T) {
 func TestRegisterAndLogin(t *testing.T) {
 	r, _ := setupTestHandler(t)
 
-	registerResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
-		"email":    "reader@example.com",
-		"password": "password123",
-	})
+	registerResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", testRegisterBody("reader@example.com", "password123"))
 	if registerResp.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d body=%s", registerResp.Code, registerResp.Body.String())
 	}
@@ -410,7 +453,7 @@ func TestRegisterValidation(t *testing.T) {
 
 func TestRegisterDuplicateEmail(t *testing.T) {
 	r, _ := setupTestHandler(t)
-	body := map[string]string{"email": "reader@example.com", "password": "password123"}
+	body := testRegisterBody("reader@example.com", "password123")
 	resp1 := doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", body)
 	if resp1.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", resp1.Code)
@@ -424,10 +467,7 @@ func TestRegisterDuplicateEmail(t *testing.T) {
 func TestLoginInvalidCredentials(t *testing.T) {
 	r, _ := setupTestHandler(t)
 
-	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
-		"email":    "reader@example.com",
-		"password": "password123",
-	})
+	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", testRegisterBody("reader@example.com", "password123"))
 
 	resp := doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/login", map[string]string{
 		"email":    "reader@example.com",
@@ -451,10 +491,7 @@ func TestLoginValidation(t *testing.T) {
 
 func TestGenresAndPreferences(t *testing.T) {
 	r, db := setupTestHandler(t)
-	registerResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
-		"email":    "reader@example.com",
-		"password": "password123",
-	})
+	registerResp := doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", testRegisterBody("reader@example.com", "password123"))
 	if registerResp.Code != http.StatusCreated {
 		t.Fatalf("register failed: %s", registerResp.Body.String())
 	}
@@ -504,10 +541,7 @@ func TestSavePreferencesValidationAndErrors(t *testing.T) {
 		t.Fatalf("expected 401 without token, got %d", unauthResp.Code)
 	}
 
-	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
-		"email":    "reader@example.com",
-		"password": "password123",
-	})
+	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", testRegisterBody("reader@example.com", "password123"))
 	token := loginAndGetAccessToken(t, r, "reader@example.com", "password123")
 
 	invalidBodyResp := doJSONRequestWithToken(t, r, http.MethodPost, "/api/v1/user/preferences", map[string]any{
@@ -527,10 +561,7 @@ func TestSavePreferencesValidationAndErrors(t *testing.T) {
 
 func TestGetPreferencesValidation(t *testing.T) {
 	r, _ := setupTestHandler(t)
-	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
-		"email":    "reader@example.com",
-		"password": "password123",
-	})
+	_ = doJSONRequest(t, r, http.MethodPost, "/api/v1/auth/register", testRegisterBody("reader@example.com", "password123"))
 	token := loginAndGetAccessToken(t, r, "reader@example.com", "password123")
 	resp := doJSONRequestWithToken(t, r, http.MethodGet, "/api/v1/user/not-a-uuid/preferences", nil, token)
 	if resp.Code != http.StatusBadRequest {

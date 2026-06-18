@@ -2,17 +2,28 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useEffect } from "react";
 import { Card } from "@/components/ui/Card";
-import { AuthorApplicationForm } from "@/features/auth/AuthorApplicationForm";
 import { AccessKeyForm } from "@/features/auth/AccessKeyForm";
 import { AuthorReviewQueue } from "@/features/admin/AuthorReviewQueue";
 import { SuperAdminPanel } from "@/features/admin/SuperAdminPanel";
-import { api, formatGenreLabel, formatRoleLabel } from "@/services/api";
+import { api, formatGenreLabel, formatRoleLabel, formatUserFullName } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import { roles } from "@/lib/roles";
 
 export function DashboardContent() {
   const user = useAuthStore((state) => state.user);
+  const updateUser = useAuthStore((state) => state.updateUser);
+
+  const profileQuery = useQuery({
+    queryKey: ["profile", user?.id],
+    queryFn: api.me,
+    enabled: Boolean(user?.id),
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+
+  const displayUser = profileQuery.data ?? user;
 
   const healthQuery = useQuery({
     queryKey: ["health"],
@@ -27,7 +38,13 @@ export function DashboardContent() {
   });
 
   const isHealthy = healthQuery.data?.status === "healthy";
-  const role = user?.role ?? roles.Reader;
+  const role = displayUser?.role ?? roles.Reader;
+
+  useEffect(() => {
+    if (profileQuery.data) {
+      updateUser(profileQuery.data);
+    }
+  }, [profileQuery.data, updateUser]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,12 +63,24 @@ export function DashboardContent() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-2">
         <Card title="Welcome">
-          <p className="text-foreground">
-            {user?.email ? `Welcome back, ${user.email}` : "Welcome to EUKOV"}
-          </p>
-          <p className="mt-2 text-sm text-muted">
-            Role: {formatRoleLabel(role)}
-          </p>
+          {displayUser ? (
+            <>
+              <p className="text-sm text-muted">Welcome back,</p>
+              <p className="mt-1 text-2xl font-bold text-foreground">
+                {profileQuery.isLoading && !profileQuery.data
+                  ? "…"
+                  : displayUser.nickname || formatUserFullName(displayUser) || "Reader"}
+              </p>
+              {displayUser.nickname && formatUserFullName(displayUser) ? (
+                <p className="mt-1 text-base font-medium text-muted">
+                  {formatUserFullName(displayUser)}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-foreground">Welcome to EUKOV</p>
+          )}
+          <p className="mt-3 text-sm text-muted">Role: {formatRoleLabel(role)}</p>
         </Card>
 
         <Card title="Profile & Security">
@@ -109,7 +138,15 @@ export function DashboardContent() {
 
       {role === roles.Reader && (
         <Card title="Apply for Author Status">
-          <AuthorApplicationForm />
+          <p className="mb-4 text-sm text-muted">
+            Submit your author request from Settings, then track replies in Inbox.
+          </p>
+          <a
+            href="/dashboard/settings"
+            className="text-sm font-medium text-accent hover:underline"
+          >
+            Go to Settings →
+          </a>
         </Card>
       )}
 

@@ -79,3 +79,7 @@ func (s *SubscriptionService) IsSubscribed(ctx context.Context, readerID, author
 	}
 	return true, nil
 }
+
+func (s *SubscriptionService) ListReadersByAuthor(ctx context.Context, authorID uuid.UUID) ([]uuid.UUID, error) {
+	return s.subs.ListReadersByAuthor(ctx, authorID)
+}

@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-import { api } from "@/services/api";
+import { api, formatUserNickname } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import { roles } from "@/lib/roles";
 
 const baseNav = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard/inbox", label: "Inbox" },
   { href: "/dashboard/docket", label: "Docket" },
   { href: "/dashboard/library", label: "Library" },
   { href: "/dashboard/settings", label: "Settings" },
@@ -44,9 +45,9 @@ export function TopNav() {
         </span>
       </div>
       <div className="flex items-center gap-3">
-        {user?.email && (
+        {user && (
           <span className="hidden text-sm text-muted md:inline">
-            {user.email}
+            {formatUserNickname(user)}
           </span>
         )}
         <ThemeToggle />

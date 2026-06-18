@@ -11,6 +11,7 @@ import (
 )
 
 func BootstrapSuperAdmin(ctx context.Context, users *repository.UserRepository, email, password string) error {
+	email = repository.NormalizeEmail(email)
 	if email == "" || password == "" {
 		return nil
 	}

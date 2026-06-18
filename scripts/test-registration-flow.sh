@@ -21,7 +21,7 @@ echo ""
 echo "2. Register user ($EMAIL)"
 REGISTER=$(curl -sf -X POST "$API/auth/register" \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"firstName\":\"Manual\",\"lastName\":\"Tester\",\"nickname\":\"manual\"}")
 echo "   $REGISTER"
 USER_ID=$(echo "$REGISTER" | python3 -c "import sys,json; print(json.load(sys.stdin)['userId'])")
 echo "   OK — userId: $USER_ID"

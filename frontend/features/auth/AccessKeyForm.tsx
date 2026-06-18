@@ -1,23 +1,34 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { api, ApiError, NetworkError } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 
 const schema = z.object({
-  accessKey: z.string().min(16, "Enter the full access key"),
+  accessKey: z.string().trim().min(16, "Enter the full access key"),
 });
 
 type FormValues = z.infer<typeof schema>;
 
-export function AccessKeyForm() {
+type AccessKeyFormProps = {
+  defaultAccessKey?: string;
+  compact?: boolean;
+  onSuccess?: () => void;
+};
+
+export function AccessKeyForm({
+  defaultAccessKey,
+  compact = false,
+  onSuccess,
+}: AccessKeyFormProps) {
+  const queryClient = useQueryClient();
   const setSession = useAuthStore((s) => s.setSession);
   const accessToken = useAuthStore((s) => s.accessToken);
   const refreshToken = useAuthStore((s) => s.refreshToken);
-  const user = useAuthStore((s) => s.user);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,19 +36,37 @@ export function AccessKeyForm() {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { accessKey: defaultAccessKey ?? "" },
+  });
+
+  useEffect(() => {
+    if (defaultAccessKey) {
+      setValue("accessKey", defaultAccessKey);
+    }
+  }, [defaultAccessKey, setValue]);
 
   const onSubmit = async (values: FormValues) => {
     setMessage(null);
     setError(null);
     try {
       const result = await api.consumeAccessKey(values.accessKey);
-      if (user && accessToken && refreshToken) {
-        setSession(accessToken, refreshToken, { ...user, role: result.role });
+      if (accessToken && refreshToken) {
+        const me = await api.me();
+        setSession(accessToken, refreshToken, me);
       }
-      setMessage(`Promotion successful. Your role is now ${result.role}.`);
+      setMessage(
+        result.role === "AUTHOR"
+          ? "You are now an Author. Open your Docket to start writing."
+          : `Promotion successful. Your role is now ${result.role}.`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["author-application-mine"] });
       reset();
+      onSuccess?.();
     } catch (err) {
       if (err instanceof ApiError || err instanceof NetworkError) {
         setError(err.message);
@@ -48,7 +77,10 @@ export function AccessKeyForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className={compact ? "mt-3 flex flex-col gap-2" : "flex flex-col gap-4"}
+    >
       <div>
         <label htmlFor="accessKey" className="mb-1 block text-sm font-medium">
           Admin Access Key
@@ -79,7 +111,11 @@ export function AccessKeyForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-foreground hover:bg-accent-hover disabled:opacity-50"
+        className={
+          compact
+            ? "w-fit rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:bg-accent-hover disabled:opacity-50"
+            : "rounded-lg bg-accent px-4 py-2 font-medium text-accent-foreground hover:bg-accent-hover disabled:opacity-50"
+        }
       >
         {isSubmitting ? "Validating..." : "Redeem Access Key"}
       </button>

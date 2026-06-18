@@ -53,6 +53,8 @@ func main() {
 	prefRepo := repository.NewPreferenceRepository(db)
 	accessKeyRepo := repository.NewAccessKeyRepository(db)
 	authorAppRepo := repository.NewAuthorApplicationRepository(db)
+	attachmentRepo := repository.NewApplicationAttachmentRepository(db)
+	inboxRepo := repository.NewInboxRepository(db)
 	auditRepo := repository.NewAuditLogRepository(db)
 	refreshRepo := repository.NewRefreshTokenRepository(db)
 
@@ -62,8 +64,9 @@ func main() {
 	prefSvc := service.NewPreferenceService(userRepo, genreRepo, prefRepo)
 	sessionSvc := service.NewAuthSessionService(userRepo, refreshRepo, jwtSvc)
 	auditSvc := service.NewAuditService(auditRepo)
-	accessKeySvc := service.NewAccessKeyService(accessKeyRepo, userRepo, auditSvc)
-	authorAppSvc := service.NewAuthorApplicationService(authorAppRepo, userRepo, auditSvc)
+	inboxSvc := service.NewInboxService(inboxRepo, userRepo)
+	accessKeySvc := service.NewAccessKeyService(accessKeyRepo, userRepo, authorAppRepo, auditSvc, inboxSvc)
+	authorAppSvc := service.NewAuthorApplicationService(authorAppRepo, attachmentRepo, userRepo, auditSvc, inboxSvc, accessKeySvc)
 
 	docketRepo := repository.NewDocketRepository(db)
 	documentRepo := repository.NewDocumentRepository(db)
@@ -109,6 +112,7 @@ func main() {
 		accessKeySvc,
 		authorAppSvc,
 		auditSvc,
+		inboxSvc,
 		documentSvc,
 		docketSvc,
 		adminActivitySvc,

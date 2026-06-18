@@ -12,6 +12,10 @@ type User struct {
 	Email        string    `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
 	PasswordHash string    `gorm:"type:text;not null" json:"-"`
 	Role         string    `gorm:"type:varchar(50);not null;default:READER" json:"role"`
+	FirstName    string    `gorm:"type:varchar(100)" json:"firstName"`
+	MiddleName   string    `gorm:"type:varchar(100)" json:"middleName"`
+	LastName     string    `gorm:"type:varchar(100)" json:"lastName"`
+	Nickname     string    `gorm:"type:varchar(100)" json:"nickname"`
 	TokenVersion int       `gorm:"not null;default:1" json:"-"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
@@ -133,14 +137,16 @@ func (Document) TableName() string {
 }
 
 type AccessKey struct {
-	ID         uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	KeyHash    string     `gorm:"type:text;not null" json:"-"`
-	CreatedBy  uuid.UUID  `gorm:"type:uuid;not null" json:"createdBy"`
-	ConsumedBy *uuid.UUID `gorm:"type:uuid" json:"consumedBy,omitempty"`
-	ExpiresAt  time.Time  `json:"expiresAt"`
-	ConsumedAt *time.Time `json:"consumedAt,omitempty"`
-	Status     string     `gorm:"type:varchar(50);not null;default:ACTIVE" json:"status"`
-	CreatedAt  time.Time  `json:"createdAt"`
+	ID            uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	KeyHash       string     `gorm:"type:text;not null" json:"-"`
+	CreatedBy     uuid.UUID  `gorm:"type:uuid;not null" json:"createdBy"`
+	ConsumedBy    *uuid.UUID `gorm:"type:uuid" json:"consumedBy,omitempty"`
+	TargetRole    string     `gorm:"type:varchar(50);not null;default:ADMIN" json:"targetRole"`
+	ApplicationID *uuid.UUID `gorm:"type:uuid" json:"applicationId,omitempty"`
+	ExpiresAt     time.Time  `json:"expiresAt"`
+	ConsumedAt    *time.Time `json:"consumedAt,omitempty"`
+	Status        string     `gorm:"type:varchar(50);not null;default:ACTIVE" json:"status"`
+	CreatedAt     time.Time  `json:"createdAt"`
 }
 
 func (AccessKey) TableName() string {
@@ -148,19 +154,56 @@ func (AccessKey) TableName() string {
 }
 
 type AuthorApplication struct {
-	ID             uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	UserID         uuid.UUID  `gorm:"type:uuid;not null;index" json:"userId"`
-	Qualifications string     `gorm:"type:text;not null" json:"qualifications"`
-	Experience     string     `gorm:"type:text;not null" json:"experience"`
-	Status         string     `gorm:"type:varchar(50);not null;default:PENDING" json:"status"`
-	ReviewedBy     *uuid.UUID `gorm:"type:uuid" json:"reviewedBy,omitempty"`
-	ReviewedAt     *time.Time `json:"reviewedAt,omitempty"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
+	ID               uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	UserID           uuid.UUID  `gorm:"type:uuid;not null;index" json:"userId"`
+	Subject          string     `gorm:"type:varchar(255);not null;default:''" json:"subject"`
+	MessageBody      string     `gorm:"type:text;not null;default:''" json:"messageBody"`
+	Qualifications   string     `gorm:"type:text;not null;default:''" json:"qualifications"`
+	Experience       string     `gorm:"type:text;not null;default:''" json:"experience"`
+	Status           string     `gorm:"type:varchar(50);not null;default:PENDING" json:"status"`
+	AdminReply       string     `gorm:"type:text" json:"adminReply,omitempty"`
+	AdminReplyBy     *uuid.UUID `gorm:"type:uuid" json:"adminReplyBy,omitempty"`
+	AdminReplyAt     *time.Time `json:"adminReplyAt,omitempty"`
+	RepliedAccessKey string     `gorm:"type:text" json:"repliedAccessKey,omitempty"`
+	ReviewedBy       *uuid.UUID `gorm:"type:uuid" json:"reviewedBy,omitempty"`
+	ReviewedAt       *time.Time `json:"reviewedAt,omitempty"`
+	CreatedAt        time.Time  `json:"createdAt"`
+	UpdatedAt        time.Time  `json:"updatedAt"`
 }
 
 func (AuthorApplication) TableName() string {
 	return "author_applications"
+}
+
+type AuthorApplicationAttachment struct {
+	ID            uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	ApplicationID uuid.UUID `gorm:"type:uuid;not null;index" json:"applicationId"`
+	FileName      string    `gorm:"type:text;not null" json:"fileName"`
+	StoredPath    string    `gorm:"type:text;not null" json:"-"`
+	MimeType      string    `gorm:"type:text" json:"mimeType,omitempty"`
+	FileSize      int64     `gorm:"not null;default:0" json:"fileSize"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+func (AuthorApplicationAttachment) TableName() string {
+	return "author_application_attachments"
+}
+
+type InboxMessage struct {
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	UserID      uuid.UUID      `gorm:"type:uuid;not null;index" json:"userId"`
+	SenderID    *uuid.UUID     `gorm:"type:uuid" json:"senderId,omitempty"`
+	MessageType string         `gorm:"type:varchar(50);not null" json:"messageType"`
+	Subject     string         `gorm:"type:text;not null" json:"subject"`
+	Body        string         `gorm:"type:text;not null" json:"body"`
+	RelatedID   *uuid.UUID     `gorm:"type:uuid" json:"relatedId,omitempty"`
+	ReadAt      *time.Time     `json:"readAt,omitempty"`
+	Metadata    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"metadata,omitempty"`
+	CreatedAt   time.Time      `json:"createdAt"`
+}
+
+func (InboxMessage) TableName() string {
+	return "inbox_messages"
 }
 
 type AuditLog struct {

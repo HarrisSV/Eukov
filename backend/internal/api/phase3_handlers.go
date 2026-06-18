@@ -174,6 +174,7 @@ func (h *Handler) PublishDocument(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to publish document"})
 		return
 	}
+	h.notifyBookRelease(c, user.ID, documentID, doc.Title)
 	c.JSON(http.StatusOK, gin.H{"document": doc})
 }
 

@@ -20,7 +20,7 @@ func setupDocumentService(t *testing.T) (*DocumentService, uuid.UUID) {
 		t.Fatalf("open db: %v", err)
 	}
 	stmts := []string{
-		`CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL, token_version INTEGER DEFAULT 1, created_at DATETIME, updated_at DATETIME);`,
+		`CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL, first_name TEXT, middle_name TEXT, last_name TEXT, nickname TEXT, token_version INTEGER DEFAULT 1, created_at DATETIME, updated_at DATETIME);`,
 		`CREATE TABLE genres (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE);`,
 		`CREATE TABLE dockets (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, created_at DATETIME);`,
 		`CREATE TABLE documents (id TEXT PRIMARY KEY, docket_id TEXT NOT NULL, author_id TEXT NOT NULL, title TEXT NOT NULL, file_path TEXT NOT NULL, status TEXT NOT NULL, genre_id TEXT, published_at DATETIME, created_at DATETIME, updated_at DATETIME);`,

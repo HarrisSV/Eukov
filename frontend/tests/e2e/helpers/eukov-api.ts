@@ -70,7 +70,13 @@ export async function registerUser(
   password: string,
 ): Promise<void> {
   const { status } = await apiJson(request, "POST", "/auth/register", {
-    body: { email, password },
+    body: {
+      email,
+      password,
+      firstName: "Test",
+      lastName: "User",
+      nickname: email.split("@")[0] || "reader",
+    },
   });
   if (status !== 201 && status !== 409) {
     throw new Error(`register failed for ${email}: ${status}`);

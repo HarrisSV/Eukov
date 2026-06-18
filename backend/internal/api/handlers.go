@@ -23,6 +23,7 @@ type Handler struct {
 	accessKeys      *service.AccessKeyService
 	authorApps      *service.AuthorApplicationService
 	audit           *service.AuditService
+	inbox           *service.InboxService
 	documents       *service.DocumentService
 	docket          *service.DocketService
 	adminActivity   *service.AdminActivityService
@@ -44,6 +45,7 @@ func NewHandler(
 	accessKeys *service.AccessKeyService,
 	authorApps *service.AuthorApplicationService,
 	audit *service.AuditService,
+	inbox *service.InboxService,
 	documents *service.DocumentService,
 	docket *service.DocketService,
 	adminActivity *service.AdminActivityService,
@@ -63,6 +65,7 @@ func NewHandler(
 		accessKeys:      accessKeys,
 		authorApps:      authorApps,
 		audit:           audit,
+		inbox:           inbox,
 		documents:       documents,
 		docket:          docket,
 		adminActivity:   adminActivity,
@@ -96,6 +99,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, jwtSvc *auth.JWTService, authLim
 			reader := protected.Group("")
 			reader.Use(middleware.RequireRole(roles.Reader))
 			reader.POST("/author-applications", h.SubmitAuthorApplication)
+			reader.POST("/author-applications/request", h.SubmitAuthorApplicationMultipart)
+			reader.GET("/author-applications/mine", h.GetMyAuthorApplication)
+			reader.GET("/author-applications/attachments/:attachmentId", h.DownloadAuthorApplicationAttachment)
+			reader.GET("/inbox", h.ListInbox)
+			reader.PATCH("/inbox/:id/read", h.MarkInboxRead)
 			reader.POST("/access-keys/consume", h.ConsumeAccessKey)
 			reader.GET("/docket", h.GetDocketWorkspace)
 			reader.GET("/docket/books", h.GetDocketBooks)
@@ -111,6 +119,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, jwtSvc *auth.JWTService, authLim
 			admin := protected.Group("/admin")
 			admin.Use(middleware.RequireRole(roles.Admin))
 			admin.GET("/author-applications", h.ListAuthorApplications)
+			admin.POST("/author-applications/:id/reply", h.ReplyAuthorApplication)
 			admin.POST("/author-applications/:id/approve", h.ApproveAuthorApplication)
 			admin.POST("/author-applications/:id/reject", h.RejectAuthorApplication)
 			admin.GET("/unpublish-queue", h.ListUnpublishRequests)
@@ -152,6 +161,15 @@ func (h *Handler) Health(c *gin.Context) {
 }
 
 type registerRequest struct {
+	Email      string `json:"email" validate:"required,email"`
+	Password   string `json:"password" validate:"required,min=8"`
+	FirstName  string `json:"firstName" validate:"required"`
+	MiddleName string `json:"middleName"`
+	LastName   string `json:"lastName" validate:"required"`
+	Nickname   string `json:"nickname" validate:"required"`
+}
+
+type loginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
 }
@@ -174,8 +192,12 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 
 	result, err := h.users.Register(c.Request.Context(), service.RegisterInput{
-		Email:    req.Email,
-		Password: req.Password,
+		Email:      req.Email,
+		Password:   req.Password,
+		FirstName:  req.FirstName,
+		MiddleName: req.MiddleName,
+		LastName:   req.LastName,
+		Nickname:   req.Nickname,
 	})
 	if err != nil {
 		if errors.Is(err, repository.ErrUserAlreadyExists) {

@@ -30,7 +30,7 @@ func setupIntegrationRouter(t *testing.T) *gin.Engine {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	stmts := []string{
-		`CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL, token_version INTEGER NOT NULL DEFAULT 1, created_at DATETIME, updated_at DATETIME);`,
+		`CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL, first_name TEXT, middle_name TEXT, last_name TEXT, nickname TEXT, token_version INTEGER NOT NULL DEFAULT 1, created_at DATETIME, updated_at DATETIME);`,
 		`CREATE TABLE genres (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE);`,
 		`CREATE TABLE user_genres (user_id TEXT NOT NULL, genre_id TEXT NOT NULL, PRIMARY KEY (user_id, genre_id));`,
 		`CREATE TABLE dockets (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, created_at DATETIME);`,
@@ -152,8 +152,11 @@ func TestIntegration_RegisterLoginPreferencesFlow(t *testing.T) {
 	r := setupIntegrationRouter(t)
 
 	registerResp := doReq(t, r, http.MethodPost, "/api/v1/auth/register", map[string]string{
-		"email":    "reader@example.com",
-		"password": "password123",
+		"email":      "reader@example.com",
+		"password":   "password123",
+		"firstName":  "Test",
+		"lastName":   "User",
+		"nickname":   "tester",
 	})
 	if registerResp.Code != http.StatusCreated {
 		t.Fatalf("register failed: %s", registerResp.Body.String())

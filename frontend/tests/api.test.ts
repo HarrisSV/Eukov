@@ -27,7 +27,13 @@ describe("api client", () => {
       }),
     );
 
-    const result = await api.register("reader@example.com", "password123");
+    const result = await api.register({
+      email: "reader@example.com",
+      password: "password123",
+      firstName: "Reader",
+      lastName: "Example",
+      nickname: "reader",
+    });
     expect(result.success).toBe(true);
   });
 

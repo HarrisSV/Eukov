@@ -74,6 +74,59 @@ export interface AuthUser {
   id: string;
   email: string;
   role: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  nickname?: string;
+}
+
+export interface RegisterInput {
+  email: string;
+  password: string;
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  nickname: string;
+}
+
+export function formatUserFullName(
+  user: Pick<AuthUser, "firstName" | "middleName" | "lastName">,
+): string {
+  return [user.firstName, user.middleName, user.lastName]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function formatUserNickname(
+  user: Pick<
+    AuthUser,
+    "firstName" | "middleName" | "lastName" | "nickname" | "email"
+  >,
+): string {
+  if (user.nickname) {
+    return user.nickname;
+  }
+  const fullName = formatUserFullName(user);
+  if (fullName) {
+    return fullName;
+  }
+  return user.email;
+}
+
+export function formatUserDisplayName(
+  user: Pick<
+    AuthUser,
+    "firstName" | "middleName" | "lastName" | "nickname" | "email"
+  >,
+): string {
+  const fullName = formatUserFullName(user);
+  if (fullName && user.nickname) {
+    return `${fullName} (${user.nickname})`;
+  }
+  if (fullName) {
+    return fullName;
+  }
+  return user.email;
 }
 
 export interface LoginResponse {
@@ -95,12 +148,67 @@ export interface PreferencesResponse {
   genres: string[];
 }
 
+export interface AuthorApplicationAttachment {
+  id: string;
+  applicationId: string;
+  fileName: string;
+  mimeType?: string;
+  fileSize: number;
+}
+
 export interface AuthorApplication {
   id: string;
   userId: string;
+  subject?: string;
+  messageBody?: string;
   qualifications: string;
   experience: string;
   status: string;
+  adminReply?: string;
+  userEmail?: string;
+  userNickname?: string;
+  userFullName?: string;
+  attachments?: AuthorApplicationAttachment[];
+}
+
+export interface InboxMessage {
+  id: string;
+  userId: string;
+  senderId?: string;
+  messageType: string;
+  subject: string;
+  body: string;
+  relatedId?: string;
+  readAt?: string;
+  createdAt: string;
+  metadata?: {
+    includeAccessKey?: boolean;
+    approveAuthor?: boolean;
+  };
+}
+
+async function requestMultipart<T>(path: string, formData: FormData): Promise<T> {
+  const token = useAuthStore.getState().accessToken;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: formData,
+    });
+  } catch {
+    throw new NetworkError(
+      `Cannot reach API at ${API_BASE}. Is the backend running?`,
+    );
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new ApiError(
+      (data as { error?: string }).error ?? "Request failed",
+      response.status,
+    );
+  }
+  return data as T;
 }
 
 export interface AuditLog {
@@ -113,10 +221,10 @@ export interface AuditLog {
 export const api = {
   health: () => request<HealthResponse>("/health"),
 
-  register: (email: string, password: string) =>
+  register: (input: RegisterInput) =>
     request<RegisterResponse>("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(input),
     }),
 
   login: (email: string, password: string) =>
@@ -167,6 +275,56 @@ export const api = {
       },
       true,
     ),
+
+  submitAuthorRequest: (input: {
+    subject: string;
+    message: string;
+    attachments: File[];
+  }) => {
+    const formData = new FormData();
+    formData.append("subject", input.subject);
+    formData.append("message", input.message);
+    for (const file of input.attachments) {
+      formData.append("attachments", file);
+    }
+    return requestMultipart<{ id: string; status: string; application: AuthorApplication }>(
+      "/author-applications/request",
+      formData,
+    );
+  },
+
+  getMyAuthorApplication: () =>
+    request<{ application: AuthorApplication }>(
+      "/author-applications/mine",
+      {},
+      true,
+    ),
+
+  getInbox: () =>
+    request<{ messages: InboxMessage[] }>("/inbox", {}, true),
+
+  markInboxRead: (messageId: string) =>
+    request<{ success: boolean }>(
+      `/inbox/${messageId}/read`,
+      { method: "PATCH" },
+      true,
+    ),
+
+  replyAuthorApplication: (
+    id: string,
+    input: { message: string; includeAccessKey?: boolean },
+  ) =>
+    request<{ application: AuthorApplication }>(
+      `/admin/author-applications/${id}/reply`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+      true,
+    ),
+
+  downloadAuthorAttachment: (attachmentId: string) =>
+    `${API_BASE}/author-applications/attachments/${attachmentId}`,
 
   listAuthorApplications: () =>
     request<{ applications: AuthorApplication[] }>(

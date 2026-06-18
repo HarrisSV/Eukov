@@ -11,7 +11,15 @@ import { useUserStore } from "@/store/userStore";
 
 const registerSchema = z
   .object({
-    email: z.string().email("Enter a valid email address"),
+    firstName: z.string().trim().min(1, "First name is required"),
+    middleName: z.string().trim().optional(),
+    lastName: z.string().trim().min(1, "Last name is required"),
+    nickname: z.string().trim().min(1, "Nickname is required"),
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email("Enter a valid email address"),
     password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
   })
@@ -39,7 +47,14 @@ export function RegisterForm() {
   const onSubmit = async (values: RegisterFormValues) => {
     setSubmitError(null);
     try {
-      await api.register(values.email, values.password);
+      await api.register({
+        email: values.email,
+        password: values.password,
+        firstName: values.firstName,
+        middleName: values.middleName || undefined,
+        lastName: values.lastName,
+        nickname: values.nickname,
+      });
       const session = await api.login(values.email, values.password);
       setSession(session.accessToken, session.refreshToken, session.user);
       setUser(session.user.id, session.user.email);
@@ -61,6 +76,78 @@ export function RegisterForm() {
       className="mx-auto flex w-full max-w-md flex-col gap-4"
       noValidate
     >
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label htmlFor="firstName" className="mb-1 block text-sm font-medium">
+            First name
+          </label>
+          <input
+            id="firstName"
+            type="text"
+            autoComplete="given-name"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+            {...register("firstName")}
+          />
+          {errors.firstName && (
+            <p className="mt-1 text-sm text-danger" role="alert">
+              {errors.firstName.message}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="middleName" className="mb-1 block text-sm font-medium">
+            Middle name
+          </label>
+          <input
+            id="middleName"
+            type="text"
+            autoComplete="additional-name"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+            {...register("middleName")}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor="lastName" className="mb-1 block text-sm font-medium">
+          Last name
+        </label>
+        <input
+          id="lastName"
+          type="text"
+          autoComplete="family-name"
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+          {...register("lastName")}
+        />
+        {errors.lastName && (
+          <p className="mt-1 text-sm text-danger" role="alert">
+            {errors.lastName.message}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="nickname" className="mb-1 block text-sm font-medium">
+          Nickname
+        </label>
+        <input
+          id="nickname"
+          type="text"
+          autoComplete="nickname"
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+          {...register("nickname")}
+        />
+        <p className="mt-1 text-xs text-muted">
+          This is how you&apos;ll appear on the platform.
+        </p>
+        {errors.nickname && (
+          <p className="mt-1 text-sm text-danger" role="alert">
+            {errors.nickname.message}
+          </p>
+        )}
+      </div>
+
       <div>
         <label htmlFor="email" className="mb-1 block text-sm font-medium">
           Email

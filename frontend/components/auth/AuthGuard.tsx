@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
+import { api } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import { roles } from "@/lib/roles";
 
@@ -14,6 +15,7 @@ export function AuthGuard({ children, minRole }: AuthGuardProps) {
   const router = useRouter();
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
+  const updateUser = useAuthStore((s) => s.updateUser);
 
   useEffect(() => {
     if (!accessToken || !user) {
@@ -24,6 +26,18 @@ export function AuthGuard({ children, minRole }: AuthGuardProps) {
       router.replace("/dashboard");
     }
   }, [accessToken, user, minRole, router]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      return;
+    }
+    api
+      .me()
+      .then((profile) => updateUser(profile))
+      .catch(() => {
+        // Keep the existing session if profile refresh fails.
+      });
+  }, [accessToken, updateUser]);
 
   if (!accessToken || !user) {
     return (
