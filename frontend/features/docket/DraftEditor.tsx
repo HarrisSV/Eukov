@@ -1,13 +1,22 @@
 "use client";
 
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
+import Image from "@tiptap/extension-image";
 import { FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
+import {
+  IMPORT_ACCEPT,
+  importFileOnClient,
+} from "@/lib/document-import";
+import {
+  isGoogleDriveConfigured,
+  importFromGoogleDrive,
+} from "@/features/docket/google-drive-import";
 import {
   DEFAULT_FONT_SIZE,
   FONT_FAMILIES,
@@ -21,6 +30,13 @@ import {
   PageNumber,
   SectionBreak,
 } from "@/features/docket/editor-page-extensions";
+import { PageSheet } from "@/features/docket/editor-page-sheet";
+import {
+  ensurePaginatedHtml,
+  mergeAndPaginateHtml,
+  plainTextToPaginatedHtml,
+  WORDS_PER_PAGE,
+} from "@/lib/paginate-html";
 import {
   AlignCenterIcon,
   AlignJustifyIcon,
@@ -30,6 +46,12 @@ import {
 import "./draft-editor.css";
 
 type TextAlignValue = "left" | "center" | "right" | "justify";
+
+/** Visual zoom for the document surface (does not change saved content). */
+const ZOOM_MIN = 50;
+const ZOOM_MAX = 200;
+const ZOOM_STEP = 10;
+const ZOOM_DEFAULT = 100;
 
 function getActiveTextAlign(editor: Editor): TextAlignValue {
   if (editor.isActive("heading")) {
@@ -72,6 +94,18 @@ function applyTextStyle(
 
 function useToolbarSync(editor: Editor | null) {
   const [, bump] = useState(0);
+  const historyState = useEditorState({
+    editor,
+    selector: ({ editor: ed }) => {
+      if (!ed) {
+        return { canUndo: false, canRedo: false };
+      }
+      return {
+        canUndo: ed.can().undo(),
+        canRedo: ed.can().redo(),
+      };
+    },
+  });
 
   useEffect(() => {
     if (!editor) return;
@@ -93,6 +127,8 @@ function useToolbarSync(editor: Editor | null) {
       alignCenter: false,
       alignRight: false,
       alignJustify: false,
+      canUndo: false,
+      canRedo: false,
     };
   }
 
@@ -107,6 +143,8 @@ function useToolbarSync(editor: Editor | null) {
     alignCenter: align === "center",
     alignRight: align === "right",
     alignJustify: align === "justify",
+    canUndo: historyState?.canUndo ?? false,
+    canRedo: historyState?.canRedo ?? false,
   };
 }
 
@@ -117,47 +155,87 @@ interface DraftEditorProps {
   placeholder?: string;
 }
 
-export function DraftEditor({
-  content,
-  onChange,
-  disabled = false,
-  placeholder = "Start writing or import a document...",
-}: DraftEditorProps) {
+export type DraftEditorHandle = {
+  getContent: () => string;
+};
+
+export const DraftEditor = forwardRef<DraftEditorHandle, DraftEditorProps>(
+  function DraftEditor(
+    {
+      content,
+      onChange,
+      disabled = false,
+      placeholder = "Start writing or import a document...",
+    },
+    ref,
+  ) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cloudInputRef = useRef<HTMLInputElement>(null);
+  const onChangeRef = useRef(onChange);
+  const lastHtmlFromEditor = useRef("");
+  const initialContentRef = useRef(ensurePaginatedHtml(content || "<p></p>"));
   const [importError, setImportError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [pageView, setPageView] = useState(true);
+  const [zoom, setZoom] = useState(ZOOM_DEFAULT);
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  const extensions = useMemo(
+    () => [
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3, 4, 5, 6] },
+        trailingNode: false,
+        underline: false,
+        link: false,
+      }),
       Underline,
       Link.configure({ openOnClick: false }),
       TextStyle,
       FontFamily,
       FontSize,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Image.configure({ allowBase64: true }),
+      PageSheet,
       PageBreak,
       SectionBreak,
       PageNumber,
     ],
-    content: content || "<p></p>",
-    editable: !disabled,
-    immediatelyRender: false,
-    onUpdate: ({ editor: ed }) => {
-      onChange(ed.getHTML());
-    },
-    editorProps: {
-      attributes: {
-        class: "tiptap",
-        "aria-label": "Draft editor",
-        spellcheck: "true",
+    [],
+  );
+
+  const editor = useEditor(
+    {
+      extensions,
+      content: initialContentRef.current,
+      editable: !disabled,
+      immediatelyRender: false,
+      onUpdate: ({ editor: ed }) => {
+        const html = ed.getHTML();
+        lastHtmlFromEditor.current = html;
+        onChangeRef.current(html);
+      },
+      editorProps: {
+        attributes: {
+          class: "tiptap",
+          "aria-label": "Draft editor",
+          spellcheck: "true",
+        },
       },
     },
-  });
+    [],
+  );
 
   const toolbar = useToolbarSync(editor);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getContent: () => editor?.getHTML() ?? lastHtmlFromEditor.current ?? content,
+    }),
+    [editor, content],
+  );
 
   useEffect(() => {
     if (!editor) return;
@@ -165,51 +243,95 @@ export function DraftEditor({
   }, [editor, disabled]);
 
   useEffect(() => {
-    if (!editor) return;
-    const current = editor.getHTML();
-    if (content !== current && content !== undefined) {
-      editor.commands.setContent(content || "<p></p>", { emitUpdate: false });
-    }
-  }, [content, editor]);
+    if (!editor || disabled) return;
 
-  const importDocFile = useCallback(
-    async (file: File) => {
-      if (!editor) return;
-      setImportError(null);
-
-      const name = file.name.toLowerCase();
-      if (!name.endsWith(".doc")) {
-        setImportError("Only .doc files are accepted. Use Word 97-2003 format (.doc).");
+    const onPaste = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      const pastedWords = text.split(/\s+/).filter(Boolean).length;
+      if (pastedWords < WORDS_PER_PAGE / 4) {
         return;
       }
 
+      event.preventDefault();
+      event.stopPropagation();
+
+      const pastedHtml =
+        event.clipboardData?.getData("text/html") ||
+        plainTextToPaginatedHtml(text);
+
+      const currentHtml = editor.getHTML();
+      const paginated = editor.isEmpty
+        ? ensurePaginatedHtml(pastedHtml)
+        : mergeAndPaginateHtml(currentHtml, pastedHtml);
+
+      editor.commands.setContent(paginated);
+      lastHtmlFromEditor.current = paginated;
+      onChangeRef.current(paginated);
+    };
+
+    const dom = editor.view.dom;
+    dom.addEventListener("paste", onPaste, true);
+    return () => dom.removeEventListener("paste", onPaste, true);
+  }, [editor, disabled]);
+
+  const applyImportedHtml = useCallback(
+    (html: string) => {
+      if (!editor) return;
+      const paginated = ensurePaginatedHtml(html);
+      editor.commands.setContent(paginated || "<p></p>");
+      lastHtmlFromEditor.current = editor.getHTML();
+      onChangeRef.current(lastHtmlFromEditor.current);
+    },
+    [editor],
+  );
+
+  const importLocalFile = useCallback(
+    async (file: File) => {
+      if (!editor) return;
+      setImportError(null);
       setImporting(true);
       try {
-        const form = new FormData();
-        form.append("file", file);
-        const response = await fetch("/api/import-doc", {
-          method: "POST",
-          body: form,
-        });
-        const data = (await response.json()) as { html?: string; error?: string };
-        if (!response.ok) {
-          setImportError(data.error ?? "Import failed");
-          return;
-        }
-        const html = data.html ?? "<p></p>";
-        editor.commands.setContent(html);
-        onChange(editor.getHTML());
-      } catch {
-        setImportError("Could not import file. Check your connection and try again.");
+        const html = await importFileOnClient(file);
+        applyImportedHtml(html);
+      } catch (error) {
+        setImportError(
+          error instanceof Error ? error.message : "Could not import this file.",
+        );
       } finally {
         setImporting(false);
       }
     },
-    [editor, onChange],
+    [editor, applyImportedHtml],
   );
 
+  const importCloudFile = useCallback(async () => {
+    if (!editor) return;
+    setImportError(null);
+
+    if (!isGoogleDriveConfigured()) {
+      setImportError(
+        "Google Drive is not configured. Add NEXT_PUBLIC_GOOGLE_CLIENT_ID and NEXT_PUBLIC_GOOGLE_API_KEY to your .env file, then restart the frontend.",
+      );
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const html = await importFromGoogleDrive();
+      applyImportedHtml(html);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Cloud import failed.";
+      if (!/cancel/i.test(message)) {
+        setImportError(message);
+      }
+    } finally {
+      setImporting(false);
+    }
+  }, [editor, applyImportedHtml]);
+
   const onFilePicked = (file: File | undefined) => {
-    if (file) void importDocFile(file);
+    if (file) void importLocalFile(file);
   };
 
   if (!editor) {
@@ -256,20 +378,18 @@ export function DraftEditor({
           <div className="draft-editor__divider" aria-hidden />
 
           <div className="draft-editor__group" role="group" aria-label="Structure">
-            <RibbonButton
-              label="Heading 1"
-              active={editor.isActive("heading", { level: 1 })}
-              onAction={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-            >
-              H1
-            </RibbonButton>
-            <RibbonButton
-              label="Heading 2"
-              active={editor.isActive("heading", { level: 2 })}
-              onAction={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-            >
-              H2
-            </RibbonButton>
+            {([1, 2, 3, 4, 5, 6] as const).map((level) => (
+              <RibbonButton
+                key={level}
+                label={`Heading ${level}`}
+                active={editor.isActive("heading", { level })}
+                onAction={() =>
+                  editor.chain().focus().toggleHeading({ level }).run()
+                }
+              >
+                H{level}
+              </RibbonButton>
+            ))}
             <RibbonButton
               label="Bullet list"
               active={editor.isActive("bulletList")}
@@ -440,15 +560,21 @@ export function DraftEditor({
             </RibbonButton>
             <RibbonButton
               label="Undo"
-              disabled={!editor.can().chain().focus().undo().run()}
-              onAction={() => editor.chain().focus().undo().run()}
+              disabled={!toolbar.canUndo}
+              onAction={() => {
+                editor.commands.focus();
+                editor.commands.undo();
+              }}
             >
               Undo
             </RibbonButton>
             <RibbonButton
               label="Redo"
-              disabled={!editor.can().chain().focus().redo().run()}
-              onAction={() => editor.chain().focus().redo().run()}
+              disabled={!toolbar.canRedo}
+              onAction={() => {
+                editor.commands.focus();
+                editor.commands.redo();
+              }}
             >
               Redo
             </RibbonButton>
@@ -460,18 +586,7 @@ export function DraftEditor({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".doc,application/msword"
-              className="hidden"
-              aria-hidden
-              onChange={(e) => {
-                onFilePicked(e.target.files?.[0]);
-                e.target.value = "";
-              }}
-            />
-            <input
-              ref={cloudInputRef}
-              type="file"
-              accept=".doc,application/msword"
+              accept={IMPORT_ACCEPT}
               className="hidden"
               aria-hidden
               onChange={(e) => {
@@ -480,16 +595,16 @@ export function DraftEditor({
               }}
             />
             <RibbonButton
-              label="Import .doc from this device"
+              label="Import a document or image from this device"
               disabled={importing}
               onAction={() => fileInputRef.current?.click()}
             >
               {importing ? "Importing…" : "Import"}
             </RibbonButton>
             <RibbonButton
-              label="Import .doc from cloud storage"
+              label="Import from Google Drive"
               disabled={importing}
-              onAction={() => cloudInputRef.current?.click()}
+              onAction={() => void importCloudFile()}
             >
               Cloud
             </RibbonButton>
@@ -507,9 +622,56 @@ export function DraftEditor({
         {editor.isEmpty && !disabled && (
           <p className="draft-editor__placeholder">{placeholder}</p>
         )}
-        <EditorContent editor={editor} className="draft-editor__content" />
+        <EditorContent
+          editor={editor}
+          className="draft-editor__content"
+          style={{ zoom: zoom / 100 }}
+        />
+        <div className="draft-editor__zoom-controls" role="group" aria-label="Zoom">
+          <ZoomRoundButton
+            label="Zoom out"
+            disabled={zoom <= ZOOM_MIN}
+            onAction={() => setZoom((value) => Math.max(ZOOM_MIN, value - ZOOM_STEP))}
+          >
+            −
+          </ZoomRoundButton>
+          <ZoomRoundButton
+            label="Zoom in"
+            disabled={zoom >= ZOOM_MAX}
+            onAction={() => setZoom((value) => Math.min(ZOOM_MAX, value + ZOOM_STEP))}
+          >
+            +
+          </ZoomRoundButton>
+        </div>
       </div>
     </div>
+  );
+},
+);
+
+function ZoomRoundButton({
+  children,
+  label,
+  onAction,
+  disabled,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onAction: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onMouseDown={keepFocus}
+      onClick={onAction}
+      className="draft-editor__zoom-btn"
+    >
+      {children}
+    </button>
   );
 }
 

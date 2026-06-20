@@ -56,7 +56,7 @@ func (s *ProgressService) Save(ctx context.Context, readerID uuid.UUID, update P
 	if err != nil {
 		return nil, err
 	}
-	total := TotalPages(StripHTML(content), DefaultPageSize)
+	total := TotalReadingPages(content)
 	pct := CompletionPercentage(update.Page, total)
 	rec := &models.ReadingProgress{
 		ReaderID:             readerID,

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../features/docket/draft-editor.css";
 
 :root,
 [data-theme="light"] {

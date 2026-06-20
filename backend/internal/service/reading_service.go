@@ -55,8 +55,7 @@ func (s *ReadingService) GetPage(ctx context.Context, readerID, documentID uuid.
 	if err != nil {
 		return nil, err
 	}
-	plain := StripHTML(content)
-	text, total, err := PageAt(plain, page, DefaultPageSize)
+	text, total, err := PageAtReading(content, page)
 	if err != nil {
 		return nil, err
 	}

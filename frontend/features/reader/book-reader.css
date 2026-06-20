@@ -1,0 +1,567 @@
+.reader-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.reader-header {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-bottom: 0.625rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+.reader-header__title {
+  font-size: clamp(1.125rem, 2vw, 1.5rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+}
+
+.reader-header__meta {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.reader-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+  gap: 1.25rem;
+  width: 100%;
+}
+
+.reader-toolbar {
+  flex: 0 0 9.5rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.625rem;
+  padding-top: 0.25rem;
+  text-align: center;
+}
+
+.reader-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  width: 100%;
+  max-width: 8.75rem;
+  margin-inline: auto;
+}
+
+.reader-bookmark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding-bottom: 0.375rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.reader-bookmark__message {
+  margin: 0;
+  width: 100%;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--muted);
+}
+
+.reader-controls__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.875rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 16%, transparent);
+  border-radius: 9999px;
+  background: var(--background);
+  padding: 0.3125rem 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease;
+}
+
+.reader-controls__button:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--foreground) 24%, transparent);
+}
+
+.reader-controls__button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.reader-controls__button--bookmark {
+  font-weight: 700;
+}
+
+.reader-controls__button--resume {
+  min-height: 1.75rem;
+  font-size: 0.625rem;
+  line-height: 1.3;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 0.25rem 0.625rem;
+}
+
+.reader-controls__button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.reader-controls__field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  width: 100%;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: center;
+}
+
+.reader-controls__input,
+.reader-controls__select {
+  border: 1px solid color-mix(in srgb, var(--foreground) 16%, transparent);
+  border-radius: 9999px;
+  background: var(--surface);
+  padding: 0.3125rem 1.75rem 0.3125rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--foreground);
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  text-align-last: center;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23666' d='M2 3.5 5 6.5 8 3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.625rem center;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.reader-controls__select:hover {
+  border-color: color-mix(in srgb, var(--foreground) 24%, transparent);
+}
+
+.reader-controls__select--spread {
+  min-width: 0;
+}
+
+.reader-audio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  width: 100%;
+  max-width: 8.75rem;
+  margin-inline: auto;
+  padding-top: 0.625rem;
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  text-align: center;
+}
+
+.reader-audio__label {
+  width: 100%;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: center;
+}
+
+.reader-stage-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.reader-stage {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: stretch;
+  column-gap: 0.75rem;
+}
+
+.reader-book {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.2rem;
+  background: #ffffff;
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 8%, transparent),
+    0 10px 32px color-mix(in srgb, var(--foreground) 9%, transparent);
+  overflow: hidden;
+}
+
+.reader-flipbook-host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.reader-flipbook-spine {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 20;
+  width: 3px;
+  height: var(--reader-page-height, 100%);
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, #111111 6%, transparent),
+    color-mix(in srgb, #111111 18%, transparent) 50%,
+    color-mix(in srgb, #111111 6%, transparent)
+  );
+  box-shadow:
+    inset 1px 0 4px color-mix(in srgb, #111111 10%, transparent),
+    inset -1px 0 4px color-mix(in srgb, #111111 10%, transparent);
+}
+
+.reader-flipbook-host > .reader-flipbook {
+  width: 100%;
+  height: var(--reader-page-height, 100%);
+}
+
+.reader-flipbook-host .stf__parent {
+  position: relative;
+  width: 100% !important;
+  height: var(--reader-page-height, 100%) !important;
+  min-height: 0 !important;
+  max-width: none;
+  margin: 0;
+  background: #ffffff;
+}
+
+.reader-flipbook-host .stf__wrapper {
+  position: absolute !important;
+  top: 0 !important;
+  left: 50% !important;
+  width: var(--reader-spread-width, 800px) !important;
+  height: var(--reader-page-height, 560px) !important;
+  margin: 0 !important;
+  padding-bottom: 0 !important;
+  transform: translateX(-50%) !important;
+  transform-origin: top center;
+}
+
+.reader-flipbook-host .stf__wrapper.--landscape {
+  padding-bottom: 0 !important;
+}
+
+.reader-flipbook-host .stf__block {
+  width: 100% !important;
+  height: var(--reader-page-height, 560px) !important;
+  background: #ffffff;
+}
+
+.reader-flipbook-page {
+  background: #ffffff;
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.reader-flipbook-page .reader-page {
+  height: 100%;
+  background: #ffffff;
+}
+
+.reader-flipbook-loading {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.reader-book__spread {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  grid-template-columns: 1fr 1px 1fr;
+  background: #ffffff;
+  color: #111111;
+}
+
+[data-theme="dark"] .reader-book__spread {
+  background: #fafafa;
+  color: #111111;
+}
+
+.reader-book__spread--single {
+  grid-template-columns: 1fr 1px 1fr;
+}
+
+.reader-book__gutter {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, #111111 8%, transparent),
+    color-mix(in srgb, #111111 18%, transparent) 50%,
+    color-mix(in srgb, #111111 8%, transparent)
+  );
+  box-shadow:
+    inset 2px 0 5px color-mix(in srgb, #111111 10%, transparent),
+    inset -2px 0 5px color-mix(in srgb, #111111 10%, transparent);
+}
+
+.reader-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  padding: 1.75rem 2rem 2rem;
+  overflow: hidden;
+}
+
+.reader-page::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    118deg,
+    transparent 38%,
+    color-mix(in srgb, #ffffff 42%, transparent) 47%,
+    transparent 55%
+  );
+  opacity: 0.28;
+}
+
+.reader-page--blank {
+  background: #ffffff;
+}
+
+.reader-page__label {
+  position: absolute;
+  top: 1.125rem;
+  left: 1.5rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #111111;
+}
+
+.reader-page__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+  justify-content: stretch;
+  padding-top: 1.75rem;
+}
+
+.reader-page__text {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow-y: auto;
+}
+
+.reader-page__text.tiptap {
+  color: #111111;
+  font-size: 16px;
+  line-height: 1.6;
+  text-align: left;
+  white-space: normal;
+}
+
+.reader-page__text.tiptap p {
+  margin: 0 0 0.75em;
+}
+
+.reader-page__text.tiptap p:last-child {
+  margin-bottom: 0;
+}
+
+.reader-page__text.tiptap p[style*="text-align: center"],
+.reader-page__text.tiptap h1[style*="text-align: center"],
+.reader-page__text.tiptap h2[style*="text-align: center"],
+.reader-page__text.tiptap h3[style*="text-align: center"] {
+  text-align: center;
+}
+
+.reader-page__text.tiptap p[style*="text-align: right"],
+.reader-page__text.tiptap h1[style*="text-align: right"],
+.reader-page__text.tiptap h2[style*="text-align: right"],
+.reader-page__text.tiptap h3[style*="text-align: right"] {
+  text-align: right;
+}
+
+.reader-page__text.tiptap p[style*="text-align: justify"],
+.reader-page__text.tiptap h1[style*="text-align: justify"],
+.reader-page__text.tiptap h2[style*="text-align: justify"],
+.reader-page__text.tiptap h3[style*="text-align: justify"] {
+  text-align: justify;
+}
+
+.reader-page-turn {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+  border-radius: 9999px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 10%, transparent),
+    0 4px 12px color-mix(in srgb, var(--foreground) 8%, transparent);
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.12s ease;
+}
+
+.reader-page-turn:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.reader-page-turn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.reader-page-turn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.reader-page-turn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.reader-bookmark-marker {
+  display: inline;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .reader-main {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .reader-toolbar {
+    flex: none;
+    width: 100%;
+  }
+
+  .reader-controls,
+  .reader-audio {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    max-width: none;
+    gap: 0.375rem;
+  }
+
+  .reader-controls__button,
+  .reader-controls__select {
+    width: auto;
+    min-width: 5.5rem;
+  }
+
+  .reader-controls__field {
+    width: auto;
+    min-width: 5.5rem;
+  }
+
+  .reader-stage {
+    height: auto;
+    min-height: 24rem;
+  }
+
+  .reader-book__spread {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    min-height: 24rem;
+  }
+
+  .reader-book__gutter {
+    display: none;
+  }
+
+  .reader-book__spread--single .reader-page--blank {
+    display: none;
+  }
+
+  .reader-page {
+    min-height: 18rem;
+    padding: 1.25rem 1.25rem 1.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .reader-stage {
+    column-gap: 0.5rem;
+  }
+
+  .reader-page-turn {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1.25rem;
+  }
+}

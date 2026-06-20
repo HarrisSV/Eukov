@@ -24,7 +24,7 @@ export function LibraryBookPreview({ book, onClose }: LibraryBookPreviewProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["docket-books"] });
       queryClient.invalidateQueries({ queryKey: ["book-preview", book.id] });
-      router.push(`/dashboard/read/${book.id}`);
+      router.push(`/dashboard/read/${book.id}?from=library`);
     },
   });
 
@@ -75,7 +75,7 @@ export function LibraryBookPreview({ book, onClose }: LibraryBookPreviewProps) {
             <div className="flex flex-wrap gap-2">
               {preview.hasAccess ? (
                 <Link
-                  href={`/dashboard/read/${book.id}`}
+                  href={`/dashboard/read/${book.id}?from=library`}
                   className="border-2 border-foreground bg-foreground px-4 py-2 text-sm font-medium text-background"
                 >
                   Continue reading
@@ -93,7 +93,7 @@ export function LibraryBookPreview({ book, onClose }: LibraryBookPreviewProps) {
                 </button>
               ) : (
                 <Link
-                  href={`/dashboard/read/${book.id}`}
+                  href={`/dashboard/read/${book.id}?from=library`}
                   className="border-2 border-foreground bg-foreground px-4 py-2 text-sm font-medium text-background"
                 >
                   Read full book

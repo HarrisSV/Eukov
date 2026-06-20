@@ -1,9 +1,33 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, ApiError } from "@/services/api";
+import {
+  formatSpreadLabel,
+  htmlToPlainText,
+  isHtmlContent,
+  leftPageForTarget,
+  nextSpreadLeft,
+  prevSpreadLeft,
+  rightPageNumber,
+  spreadEndPage,
+  spreadLeftPages,
+} from "@/features/reader/page-content";
+import {
+  StPageFlipBook,
+  type StPageFlipBookHandle,
+} from "@/features/reader/StPageFlipBook";
+import {
+  pageNumberFromSelection,
+  readReadingBookmark,
+  selectionOffsetIn,
+  writeReadingBookmark,
+  type ReadingBookmark,
+} from "@/lib/reading-bookmark";
+import { scrollToReadingPosition } from "@/lib/reading-bookmark-scroll";
+import "./book-reader.css";
 
 interface BookReaderProps {
   documentId: string;
@@ -12,16 +36,42 @@ interface BookReaderProps {
 
 export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(initialPage);
+  const spreadHydratedRef = useRef(false);
+  const pendingScrollRef = useRef<{ page: number; charOffset?: number } | null>(null);
+  const leftTextRef = useRef<HTMLDivElement | null>(null);
+  const rightTextRef = useRef<HTMLDivElement | null>(null);
+  const bookRef = useRef<StPageFlipBookHandle | null>(null);
+  const [leftPage, setLeftPage] = useState(() => Math.max(1, initialPage));
   const [rate, setRate] = useState(1);
   const [playing, setPlaying] = useState(false);
+  const [bookmark, setBookmark] = useState<ReadingBookmark | null>(null);
+  const [checkpointMessage, setCheckpointMessage] = useState<string | null>(null);
+  const [navLocked, setNavLocked] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  const pageQuery = useQuery({
-    queryKey: ["document-page", documentId, page],
-    queryFn: async () => (await api.getDocumentPage(documentId, page)).page,
+  const metaQuery = useQuery({
+    queryKey: ["document-page", documentId, 1],
+    queryFn: async () => (await api.getDocumentPage(documentId, 1)).page,
     enabled: Boolean(documentId),
   });
+
+  const totalPages = metaQuery.data?.totalPages ?? 1;
+
+  const pageQueries = useQueries({
+    queries: Array.from({ length: totalPages }, (_, index) => ({
+      queryKey: ["document-page", documentId, index + 1],
+      queryFn: async () => (await api.getDocumentPage(documentId, index + 1)).page,
+      enabled: Boolean(documentId) && metaQuery.isSuccess,
+    })),
+  });
+
+  const pagesReady = pageQueries.length > 0 && pageQueries.every((query) => query.isSuccess);
+  const pages = pagesReady
+    ? pageQueries.map((query) => ({
+        pageNumber: query.data!.page,
+        content: query.data!.content,
+      }))
+    : [];
 
   const previewQuery = useQuery({
     queryKey: ["book-preview", documentId],
@@ -45,12 +95,14 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["document-page", documentId] });
       queryClient.invalidateQueries({ queryKey: ["docket-books"] });
-      pageQuery.refetch();
+      metaQuery.refetch();
     },
   });
 
   const accessDenied =
-    pageQuery.error instanceof ApiError && pageQuery.error.status === 403;
+    metaQuery.error instanceof ApiError && metaQuery.error.status === 403;
+
+  const rightPage = rightPageNumber(leftPage, totalPages);
 
   const stopSpeech = useCallback(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -60,20 +112,72 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
     utteranceRef.current = null;
   }, []);
 
-  const changePage = useCallback(
-    (next: number | ((current: number) => number)) => {
+  const syncTextRefs = useCallback(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    leftTextRef.current = document.querySelector(
+      `[data-flipbook-page="${leftPage}"] .reader-page__text`,
+    ) as HTMLDivElement | null;
+
+    rightTextRef.current = rightPage
+      ? (document.querySelector(
+          `[data-flipbook-page="${rightPage}"] .reader-page__text`,
+        ) as HTMLDivElement | null)
+      : null;
+  }, [leftPage, rightPage]);
+
+  const changeSpread = useCallback(
+    (next: number | ((current: number) => number), options?: { animate?: boolean }) => {
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
       utteranceRef.current = null;
       setPlaying(false);
-      setPage(next);
+
+      const targetLeft = typeof next === "function" ? next(leftPage) : next;
+      if (targetLeft === leftPage) {
+        return;
+      }
+
+      const targetIndex = targetLeft - 1;
+      const reducedMotion =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const shouldAnimate = options?.animate === true && !reducedMotion && bookRef.current;
+
+      if (!shouldAnimate) {
+        bookRef.current?.turnToPage(targetIndex);
+        setLeftPage(targetLeft);
+        return;
+      }
+
+      setNavLocked(true);
+      bookRef.current?.flipToPage(targetIndex);
     },
-    [],
+    [leftPage],
   );
 
-  const speakPage = useCallback(() => {
-    const text = pageQuery.data?.content;
+  const handleBookFlip = useCallback(
+    (pageIndex: number) => {
+      const nextLeft = pageIndex + 1;
+      setLeftPage(nextLeft);
+      setNavLocked(false);
+      progressMutation.mutate(nextLeft);
+      window.requestAnimationFrame(syncTextRefs);
+    },
+    [progressMutation, syncTextRefs],
+  );
+
+  const speakSpread = useCallback(() => {
+    const leftContent = pages.find((page) => page.pageNumber === leftPage)?.content ?? "";
+    const rightContent = rightPage
+      ? (pages.find((page) => page.pageNumber === rightPage)?.content ?? "")
+      : "";
+    const text = [htmlToPlainText(leftContent), htmlToPlainText(rightContent)]
+      .filter(Boolean)
+      .join("\n\n");
     if (!text || typeof window === "undefined" || !window.speechSynthesis) {
       return;
     }
@@ -84,14 +188,101 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
     utteranceRef.current = utterance;
     window.speechSynthesis.speak(utterance);
     setPlaying(true);
-  }, [pageQuery.data?.content, rate, stopSpeech]);
+  }, [leftPage, pages, rate, rightPage, stopSpeech]);
 
   useEffect(() => {
-    if (pageQuery.isSuccess) {
-      progressMutation.mutate(page);
+    spreadHydratedRef.current = false;
+    setBookmark(readReadingBookmark(documentId));
+    setCheckpointMessage(null);
+  }, [documentId]);
+
+  useEffect(() => {
+    if (!checkpointMessage) {
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageQuery.isSuccess]);
+    const timer = window.setTimeout(() => setCheckpointMessage(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [checkpointMessage]);
+
+  const applyPendingScroll = useCallback(() => {
+    const pending = pendingScrollRef.current;
+    if (!pending) {
+      return;
+    }
+
+    syncTextRefs();
+    const container =
+      pending.page === leftPage
+        ? leftTextRef.current
+        : pending.page === rightPage
+          ? rightTextRef.current
+          : null;
+
+    if (!container) {
+      return;
+    }
+
+    pendingScrollRef.current = null;
+    window.requestAnimationFrame(() => {
+      scrollToReadingPosition(container, pending.charOffset);
+    });
+  }, [leftPage, rightPage, syncTextRefs]);
+
+  useEffect(() => {
+    if (!pagesReady || spreadHydratedRef.current) {
+      return;
+    }
+    spreadHydratedRef.current = true;
+    const spreadLeft = leftPageForTarget(initialPage, totalPages);
+    setLeftPage(spreadLeft);
+    bookRef.current?.turnToPage(spreadLeft - 1);
+  }, [initialPage, pagesReady, totalPages]);
+
+  useEffect(() => {
+    if (!pagesReady) {
+      return;
+    }
+    syncTextRefs();
+    applyPendingScroll();
+  }, [applyPendingScroll, leftPage, pagesReady, syncTextRefs]);
+
+  const handleBookmark = useCallback(() => {
+    syncTextRefs();
+    const selectedPage = pageNumberFromSelection(leftPage);
+    const container =
+      selectedPage === leftPage
+        ? leftTextRef.current
+        : selectedPage === rightPage
+          ? rightTextRef.current
+          : leftTextRef.current;
+    const selectionText =
+      typeof window !== "undefined" ? window.getSelection()?.toString().trim() : "";
+    const charOffset = container ? selectionOffsetIn(container) : undefined;
+
+    const saved: ReadingBookmark = {
+      documentId,
+      page: selectedPage,
+      anchorText: selectionText || undefined,
+      charOffset,
+      savedAt: Date.now(),
+    };
+
+    writeReadingBookmark(saved);
+    setBookmark(saved);
+    setCheckpointMessage(`Checkpoint made at page ${selectedPage}`);
+    progressMutation.mutate(selectedPage);
+  }, [documentId, leftPage, progressMutation, rightPage, syncTextRefs]);
+
+  const handleResumeBookmark = useCallback(() => {
+    if (!bookmark) {
+      return;
+    }
+    pendingScrollRef.current = {
+      page: bookmark.page,
+      charOffset: bookmark.charOffset,
+    };
+    changeSpread(leftPageForTarget(bookmark.page, totalPages));
+  }, [bookmark, changeSpread, totalPages]);
 
   useEffect(
     () => () => {
@@ -102,40 +293,44 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
     [],
   );
 
-  const totalPages = pageQuery.data?.totalPages ?? 1;
-  const title = pageQuery.data?.title ?? "Loading...";
+  const title = metaQuery.data?.title ?? "Loading...";
+  const spreadEnd = spreadEndPage(leftPage, totalPages);
+  const spreadLabel = formatSpreadLabel(leftPage, totalPages);
+  const spreadOptions = spreadLeftPages(totalPages);
+  const canGoPrev = leftPage > 1 && !navLocked;
+  const canGoNext = nextSpreadLeft(leftPage, totalPages) !== leftPage && !navLocked;
+  const startPageIndex = leftPageForTarget(initialPage, totalPages) - 1;
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2 border-b-2 border-border pb-4">
-        <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-        <p className="text-sm text-muted">
-          Page {page} of {totalPages}
+    <div className="reader-shell min-h-0 flex-1">
+      <header className="reader-header">
+        <h1 className="reader-header__title">{title}</h1>
+        <p className="reader-header__meta">
+          Pages {leftPage}
+          {spreadEnd !== leftPage ? `–${spreadEnd}` : ""} of {totalPages}
         </p>
       </header>
 
-      {pageQuery.isLoading && (
-        <p className="text-sm text-muted">Loading page...</p>
-      )}
+      {metaQuery.isLoading && <p className="text-sm text-muted">Loading pages...</p>}
 
       {accessDenied && previewQuery.data && (
-        <div className="flex flex-col gap-4 border-2 border-foreground bg-surface p-4">
+        <div className="flex flex-col gap-4 border border-border bg-surface p-4">
           <p className="text-sm text-foreground">
-            Subscribe to {previewQuery.data.authorEmail} to read the full book.
-            The book will be saved to your docket automatically.
+            Subscribe to {previewQuery.data.authorEmail} to read the full book. The book will be
+            saved to your docket automatically.
           </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               disabled={subscribeMutation.isPending}
               onClick={() => subscribeMutation.mutate()}
-              className="border-2 border-foreground bg-foreground px-4 py-2 text-sm font-medium text-background"
+              className="border border-foreground bg-foreground px-4 py-2 text-sm font-medium text-background"
             >
               {subscribeMutation.isPending ? "Subscribing..." : "Subscribe to read"}
             </button>
             <Link
               href="/dashboard/library"
-              className="border-2 border-foreground px-4 py-2 text-sm text-foreground"
+              className="border border-foreground px-4 py-2 text-sm text-foreground"
             >
               Back to library
             </Link>
@@ -143,113 +338,178 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
         </div>
       )}
 
-      {pageQuery.error && !accessDenied && (
+      {metaQuery.error && !accessDenied && (
         <p className="text-sm text-foreground" role="alert">
           Unable to load this page.
         </p>
       )}
 
-      {pageQuery.data && (
-        <article className="prose max-w-none whitespace-pre-wrap border-2 border-foreground bg-surface p-6 text-foreground">
-          {pageQuery.data.content}
-        </article>
-      )}
+      {metaQuery.data && (
+        <div className="reader-main">
+          <aside className="reader-toolbar">
+            <nav className="reader-controls" aria-label="Reading controls">
+              <div className="reader-bookmark">
+                <button
+                  type="button"
+                  onClick={handleBookmark}
+                  className="reader-controls__button reader-controls__button--bookmark"
+                >
+                  Bookmark
+                </button>
+                {checkpointMessage ? (
+                  <p className="reader-bookmark__message" role="status">
+                    {checkpointMessage}
+                  </p>
+                ) : null}
+                {bookmark ? (
+                  <button
+                    type="button"
+                    onClick={handleResumeBookmark}
+                    className="reader-controls__button reader-controls__button--resume"
+                  >
+                    Read from where you left
+                  </button>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                disabled={!canGoPrev}
+                onClick={() => changeSpread((p) => prevSpreadLeft(p), { animate: true })}
+                className="reader-controls__button disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={!canGoNext}
+                onClick={() => changeSpread((p) => nextSpreadLeft(p, totalPages), { animate: true })}
+                className="reader-controls__button disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+              <label className="reader-controls__field">
+                Jump to
+                <select
+                  value={leftPage}
+                  onChange={(e) => changeSpread(Number(e.target.value))}
+                  className="reader-controls__select reader-controls__select--spread"
+                  aria-label={`Jump to pages ${spreadLabel}`}
+                >
+                  {spreadOptions.map((spreadLeft) => (
+                    <option key={spreadLeft} value={spreadLeft}>
+                      {formatSpreadLabel(spreadLeft, totalPages)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </nav>
 
-      <nav
-        className="flex flex-wrap items-center gap-3"
-        aria-label="Reading controls"
-      >
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => changePage((p) => Math.max(1, p - 1))}
-          className="border-2 border-foreground bg-background px-4 py-2 text-sm text-foreground disabled:opacity-50"
-        >
-          Previous
-        </button>
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => changePage((p) => Math.min(totalPages, p + 1))}
-          className="border-2 border-foreground bg-background px-4 py-2 text-sm text-foreground disabled:opacity-50"
-        >
-          Next
-        </button>
-        <label className="flex items-center gap-2 text-sm text-foreground">
-          Jump to
-          <input
-            type="number"
-            min={1}
-            max={totalPages}
-            value={page}
-            onChange={(e) => {
-              const next = Number(e.target.value);
-              if (next >= 1 && next <= totalPages) changePage(next);
-            }}
-            className="w-16 border-2 border-foreground bg-surface px-2 py-1"
-          />
-        </label>
-      </nav>
+            <section className="reader-audio" aria-label="Audio reader">
+              <span className="reader-audio__label">Audio reader</span>
+              {!playing ? (
+                <button type="button" onClick={speakSpread} className="reader-controls__button">
+                  Play
+                </button>
+              ) : (
+                <button type="button" onClick={stopSpeech} className="reader-controls__button">
+                  Stop
+                </button>
+              )}
+              <label className="reader-controls__field">
+                Speed
+                <select
+                  value={rate}
+                  onChange={(e) => setRate(Number(e.target.value))}
+                  className="reader-controls__select"
+                  aria-label="Speech rate"
+                >
+                  <option value={0.75}>0.75×</option>
+                  <option value={1}>1×</option>
+                  <option value={1.25}>1.25×</option>
+                  <option value={1.5}>1.5×</option>
+                </select>
+              </label>
+              {typeof window !== "undefined" && window.speechSynthesis && (
+                <label className="reader-controls__field">
+                  Voice
+                  <select
+                    className="reader-controls__select max-w-[12rem]"
+                    aria-label="Voice selection"
+                    onChange={(e) => {
+                      const voices = window.speechSynthesis.getVoices();
+                      const voice = voices.find((v) => v.name === e.target.value);
+                      if (utteranceRef.current && voice) {
+                        utteranceRef.current.voice = voice;
+                      }
+                    }}
+                  >
+                    {window.speechSynthesis.getVoices().map((voice) => (
+                      <option key={voice.name} value={voice.name}>
+                        {voice.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </section>
+          </aside>
 
-      <section
-        className="flex flex-wrap items-center gap-3 border-t-2 border-border pt-4"
-        aria-label="Audio reader"
-      >
-        <span className="text-sm font-medium text-foreground">Audio reader</span>
-        {!playing ? (
-          <button
-            type="button"
-            onClick={speakPage}
-            className="border-2 border-foreground bg-surface px-3 py-1 text-sm text-foreground"
-          >
-            Play
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={stopSpeech}
-            className="border-2 border-foreground bg-surface px-3 py-1 text-sm text-foreground"
-          >
-            Stop
-          </button>
-        )}
-        <label className="flex items-center gap-2 text-sm text-foreground">
-          Speed
-          <select
-            value={rate}
-            onChange={(e) => setRate(Number(e.target.value))}
-            className="border-2 border-foreground bg-surface px-2 py-1"
-            aria-label="Speech rate"
-          >
-            <option value={0.75}>0.75×</option>
-            <option value={1}>1×</option>
-            <option value={1.25}>1.25×</option>
-            <option value={1.5}>1.5×</option>
-          </select>
-        </label>
-        {typeof window !== "undefined" && window.speechSynthesis && (
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            Voice
-            <select
-              className="max-w-[12rem] border-2 border-foreground bg-surface px-2 py-1"
-              aria-label="Voice selection"
-              onChange={(e) => {
-                const voices = window.speechSynthesis.getVoices();
-                const voice = voices.find((v) => v.name === e.target.value);
-                if (utteranceRef.current && voice) {
-                  utteranceRef.current.voice = voice;
+          <div className="reader-stage-area">
+            <div className="reader-stage w-full">
+              <PageTurnButton
+                direction="prev"
+                disabled={!canGoPrev}
+                onClick={() => changeSpread((p) => prevSpreadLeft(p), { animate: true })}
+              />
+              <div className="reader-book min-w-0">
+                {!pagesReady ? (
+                  <p className="reader-flipbook-loading">Preparing book...</p>
+                ) : (
+                  <StPageFlipBook
+                    ref={bookRef}
+                    pages={pages}
+                    startPageIndex={startPageIndex}
+                    onFlip={handleBookFlip}
+                    onFlippingChange={setNavLocked}
+                  />
+                )}
+              </div>
+              <PageTurnButton
+                direction="next"
+                disabled={!canGoNext}
+                onClick={() =>
+                  changeSpread((p) => nextSpreadLeft(p, totalPages), { animate: true })
                 }
-              }}
-            >
-              {window.speechSynthesis.getVoices().map((voice) => (
-                <option key={voice.name} value={voice.name}>
-                  {voice.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </section>
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function PageTurnButton({
+  direction,
+  disabled,
+  onClick,
+}: {
+  direction: "prev" | "next";
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const label = direction === "prev" ? "Previous page" : "Next page";
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="reader-page-turn"
+    >
+      {direction === "prev" ? "‹" : "›"}
+    </button>
   );
 }

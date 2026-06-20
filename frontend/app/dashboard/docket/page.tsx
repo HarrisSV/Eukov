@@ -3,9 +3,9 @@ import { AuthGuard } from "@/components/auth/AuthGuard";
 import { DocketWorkspace } from "@/features/docket/DocketWorkspace";
 export default function DocketPage() {
   return (
-    <AppShell sidebarDefaultCollapsed compact>
+    <AppShell>
       <AuthGuard>
-        <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
           <div className="shrink-0">
             <h1 className="text-2xl font-bold uppercase tracking-tight">My Docket</h1>
             <p className="text-sm text-muted">
