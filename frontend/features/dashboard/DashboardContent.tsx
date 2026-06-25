@@ -12,6 +12,26 @@ import { api, formatGenreLabel, formatRoleLabel, formatUserFullName } from "@/se
 import { useAuthStore } from "@/store/authStore";
 import { roles } from "@/lib/roles";
 
+function QuickLink({
+  href,
+  label,
+  description,
+}: {
+  href: string;
+  label: string;
+  description: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex flex-col gap-1 rounded-xl border border-border/70 bg-background p-4 transition-all hover:border-accent-warm/35 hover:bg-accent-soft/50"
+    >
+      <span className="font-medium text-foreground group-hover:text-accent-warm">{label}</span>
+      <span className="text-sm text-muted">{description}</span>
+    </Link>
+  );
+}
+
 export function DashboardContent() {
   const user = useAuthStore((state) => state.user);
   const updateUser = useAuthStore((state) => state.updateUser);
@@ -33,6 +53,10 @@ export function DashboardContent() {
   });
 
   const role = displayUser?.role ?? roles.Reader;
+  const displayName =
+    profileQuery.isLoading && !profileQuery.data
+      ? "…"
+      : displayUser?.nickname || formatUserFullName(displayUser!) || "Reader";
 
   useEffect(() => {
     if (profileQuery.data) {
@@ -41,8 +65,9 @@ export function DashboardContent() {
   }, [profileQuery.data, updateUser]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <PageHeader
+        eyebrow="Your workspace"
         title="You"
         description={
           role === roles.SuperAdmin
@@ -53,41 +78,44 @@ export function DashboardContent() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-2">
-        <Card title="Welcome">
-          {displayUser ? (
-            <>
-              <p className="text-sm text-muted">Welcome back,</p>
-              <p className="mt-1 text-2xl font-bold text-foreground">
-                {profileQuery.isLoading && !profileQuery.data
-                  ? "…"
-                  : displayUser.nickname || formatUserFullName(displayUser) || "Reader"}
-              </p>
-              {displayUser.nickname && formatUserFullName(displayUser) ? (
-                <p className="mt-1 text-base font-medium text-muted">
-                  {formatUserFullName(displayUser)}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p className="text-foreground">Welcome to EUKOV</p>
-          )}
-          <p className="mt-3 text-sm text-muted">Role: {formatRoleLabel(role)}</p>
-        </Card>
+      <Card title={`Welcome back, ${displayName}`} variant="hero" className="overflow-hidden">
+        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            {displayUser?.nickname && formatUserFullName(displayUser) ? (
+              <p className="text-sm text-muted">{formatUserFullName(displayUser)}</p>
+            ) : null}
+            <p className="mt-2 font-serif text-2xl text-foreground md:text-3xl">
+              {role === roles.SuperAdmin
+                ? "Platform command center"
+                : roles.hasAtLeast(role, roles.Author)
+                  ? "Write, publish, and grow your readership"
+                  : "Discover your next great read"}
+            </p>
+            <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-border/80 bg-background/70 px-3 py-1 text-sm text-muted">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent-warm" aria-hidden />
+              Role: {formatRoleLabel(role)}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <QuickLink href="/dashboard/library" label="Library" description="Browse catalog" />
+            <QuickLink href="/dashboard/docket" label="Docket" description="Your workspace" />
+            <QuickLink href="/dashboard/inbox" label="Inbox" description="Messages" />
+          </div>
+        </div>
+      </Card>
 
-        <Card title="Profile & Security">
-          <p className="text-sm text-muted">
-            Manage account security and session settings.
-          </p>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <Card title="Profile & Security" description="Account settings and session controls.">
           <Link
             href="/dashboard/settings"
-            className="mt-3 inline-block text-sm font-medium text-accent hover:underline"
+            className="inline-flex items-center gap-2 text-sm font-medium text-accent-warm transition-colors hover:text-accent-warm-hover"
           >
-            Open security settings →
+            Open security settings
+            <span aria-hidden>→</span>
           </Link>
         </Card>
 
-        <Card title="Questionnaire Summary">
+        <Card title="Questionnaire Summary" description="Genres that shape your recommendations.">
           {preferencesQuery.isLoading && (
             <p className="text-sm text-muted">Loading preferences...</p>
           )}
@@ -96,7 +124,7 @@ export function DashboardContent() {
               {preferencesQuery.data.genres.map((genre) => (
                 <li
                   key={genre}
-                  className="rounded-full border border-border bg-background px-3 py-1 text-sm"
+                  className="rounded-full border border-border/80 bg-surface px-3 py-1 text-sm text-foreground"
                 >
                   {formatGenreLabel(genre)}
                 </li>
@@ -115,12 +143,12 @@ export function DashboardContent() {
           <p className="mb-4 text-sm text-muted">
             Submit your author request from Settings, then track replies in Inbox.
           </p>
-          <a
+          <Link
             href="/dashboard/settings"
-            className="text-sm font-medium text-accent hover:underline"
+            className="text-sm font-medium text-accent-warm hover:text-accent-warm-hover"
           >
             Go to Settings →
-          </a>
+          </Link>
         </Card>
       )}
 

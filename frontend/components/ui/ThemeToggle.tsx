@@ -12,7 +12,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
         type="button"
         onClick={toggleTheme}
         aria-label={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
-        className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background text-muted transition-colors hover:bg-surface hover:text-foreground"
+        className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/80 bg-background text-muted transition-colors hover:border-accent-warm/40 hover:bg-accent-soft hover:text-foreground"
       >
         {theme === "light" ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>

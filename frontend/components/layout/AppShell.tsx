@@ -12,8 +12,9 @@ import {
   useState,
   type ComponentType,
 } from "react";
-import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { EukovLogo } from "@/components/layout/EukovLogo";
 import { PortalFooter } from "@/components/layout/PortalFooter";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import {
   UserIcon,
   DocketIcon,
@@ -42,21 +43,17 @@ const baseNav: NavItem[] = [
 
 const SIDEBAR_WIDTH_KEY = "eukov-sidebar-width";
 const SIDEBAR_COLLAPSED_KEY = "eukov-sidebar-collapsed";
-const SIDEBAR_MIN = 56;
-const SIDEBAR_MAX = 200;
-/** Longest nav label — expanded sidebar ends flush after this text. */
+const SIDEBAR_MIN = 72;
+const SIDEBAR_MAX = 240;
 const SIDEBAR_LABEL_TEXT_WIDTH = 99;
 const SIDEBAR_RIGHT_PAD = 20;
-/** Space reserved for nav padding, link padding, icon, and gap before label text. */
 const LABEL_OFFSET = 46;
 const LABEL_MAX = SIDEBAR_LABEL_TEXT_WIDTH;
-const SIDEBAR_DEFAULT =
-  LABEL_OFFSET + SIDEBAR_LABEL_TEXT_WIDTH + SIDEBAR_RIGHT_PAD;
-/** Below this width the sidebar shows icons only. */
-const SIDEBAR_SNAP = 140;
-/** Minimum width when labels are fully visible. */
+const SIDEBAR_DEFAULT = LABEL_OFFSET + SIDEBAR_LABEL_TEXT_WIDTH + SIDEBAR_RIGHT_PAD;
+const SIDEBAR_SNAP = 148;
 const SIDEBAR_EXPANDED_MIN = SIDEBAR_DEFAULT;
 const LEGACY_EXPANDED_WIDTHS = new Set([208, 224, 240, 280]);
+const SIDEBAR_ANIMATION_MS = 240;
 
 function clampSidebarWidth(width: number) {
   return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, width));
@@ -113,8 +110,7 @@ function getLabelReveal(width: number, label: string) {
     return { maxWidth: LABEL_MAX, opacity: 1, fadeEdge: false };
   }
 
-  const progress =
-    (width - SIDEBAR_SNAP) / (SIDEBAR_EXPANDED_MIN - SIDEBAR_SNAP);
+  const progress = (width - SIDEBAR_SNAP) / (SIDEBAR_EXPANDED_MIN - SIDEBAR_SNAP);
 
   return {
     maxWidth: labelSlot,
@@ -123,13 +119,7 @@ function getLabelReveal(width: number, label: string) {
   };
 }
 
-function SidebarNavLabel({
-  label,
-  width,
-}: {
-  label: string;
-  width: number;
-}) {
+function SidebarNavLabel({ label, width }: { label: string; width: number }) {
   const reveal = getLabelReveal(width, label);
 
   if (reveal.maxWidth <= 0) {
@@ -165,13 +155,8 @@ function easeInOutCubic(t: number) {
 function persistSidebarWidth(width: number) {
   const collapsed = isSidebarCollapsed(width);
   localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
-  localStorage.setItem(
-    SIDEBAR_WIDTH_KEY,
-    String(collapsed ? SIDEBAR_DEFAULT : width),
-  );
+  localStorage.setItem(SIDEBAR_WIDTH_KEY, String(collapsed ? SIDEBAR_DEFAULT : width));
 }
-
-const SIDEBAR_ANIMATION_MS = 240;
 
 type SidebarContextValue = {
   width: number;
@@ -194,12 +179,8 @@ function useSidebar() {
 
 function userInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) {
-    return "?";
-  }
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
 }
 
@@ -216,8 +197,7 @@ export function TopNav() {
     staleTime: 30_000,
   });
 
-  const unreadCount =
-    inboxQuery.data?.filter((message) => !message.readAt).length ?? 0;
+  const unreadCount = inboxQuery.data?.filter((message) => !message.readAt).length ?? 0;
   const displayName = user ? formatUserNickname(user) : "";
 
   const handleLogout = async () => {
@@ -234,20 +214,15 @@ export function TopNav() {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-background px-4 md:px-8">
-      <Link href="/dashboard" className="min-w-0 shrink-0">
-        <p className="text-xl font-bold tracking-tight text-accent">EUKOV</p>
-        <p className="mt-0.5 text-xs text-muted">Management Portal</p>
-      </Link>
-
-      <div className="flex items-center gap-2 md:gap-3">
+    <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-border/70 bg-background/80 px-4 backdrop-blur-sm md:px-6">
+      <div className="flex items-center gap-2">
         <ThemeToggle compact />
         <Link
           href="/dashboard/inbox"
           aria-label={`Inbox${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
-          className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background text-muted transition-colors hover:bg-surface hover:text-foreground"
+          className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-border/80 bg-background text-muted transition-colors hover:border-accent-warm/40 hover:bg-accent-soft hover:text-foreground"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path
               d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9Z"
               stroke="currentColor"
@@ -258,13 +233,13 @@ export function TopNav() {
             <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
           </svg>
           {unreadCount > 0 ? (
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent" />
+            <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent-warm" />
           ) : null}
         </Link>
 
         {user ? (
-          <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-2 py-1.5 md:px-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+          <div className="flex items-center gap-2.5 rounded-xl border border-border/80 bg-background py-1 pl-1 pr-2.5 md:pr-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-xs font-semibold text-accent-foreground">
               {userInitials(displayName)}
             </span>
             <div className="hidden min-w-0 md:block">
@@ -272,7 +247,7 @@ export function TopNav() {
               <button
                 type="button"
                 onClick={() => void handleLogout()}
-                className="text-xs text-muted transition-colors hover:text-accent"
+                className="text-xs text-muted transition-colors hover:text-accent-warm"
               >
                 Logout
               </button>
@@ -284,13 +259,7 @@ export function TopNav() {
   );
 }
 
-function NavLinks({
-  pathname,
-  width,
-}: {
-  pathname: string;
-  width: number;
-}) {
+function NavLinks({ pathname, width }: { pathname: string; width: number }) {
   const user = useAuthStore((state) => state.user);
   const items: NavItem[] = [...baseNav];
   if (user && roles.hasAtLeast(user.role, roles.Admin)) {
@@ -311,35 +280,30 @@ function NavLinks({
         href={item.href}
         title={item.label}
         aria-label={item.label}
-        className={`flex h-9 w-full items-center overflow-hidden rounded-xl text-sm font-medium transition-[padding,background-color,color] duration-150 ease-out hover:bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
-          expanding ? "justify-start gap-2.5 px-3" : "justify-center px-2"
+        aria-current={active ? "page" : undefined}
+        className={`flex h-10 w-full items-center overflow-hidden rounded-xl text-sm font-medium transition-all duration-150 ease-out ${
+          expanding ? "justify-start gap-3 px-3" : "justify-center px-2"
         } ${
           active
-            ? "bg-accent/10 text-accent"
-            : "text-muted hover:text-foreground"
+            ? "bg-accent-soft text-accent-warm shadow-sm"
+            : "text-muted hover:bg-surface hover:text-foreground"
         }`}
       >
-        <Icon className="h-4 w-4 shrink-0" />
+        <Icon className={`h-4 w-4 shrink-0 ${active ? "text-accent-warm" : ""}`} />
         <SidebarNavLabel label={item.label} width={width} />
       </Link>
     );
   });
 }
 
-function SidebarToggle({
-  collapsed,
-  onToggle,
-}: {
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
+function SidebarToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
       title={collapsed ? "Expand navigation" : "Collapse navigation"}
-      className="flex h-9 w-full items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      className="flex h-9 w-full items-center justify-center rounded-xl border border-border/80 text-muted transition-colors hover:bg-surface hover:text-foreground"
     >
       <svg
         width="16"
@@ -363,24 +327,35 @@ function SidebarToggle({
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { width, collapsed, resizing, animating, startResize, toggle } =
-    useSidebar();
+  const { width, collapsed, resizing, animating, startResize, toggle } = useSidebar();
+  const showBranding = width >= SIDEBAR_SNAP;
 
   return (
     <aside
       style={{ width }}
-      className={`relative hidden h-full min-h-0 shrink-0 border-r border-border bg-background md:flex md:flex-col ${
+      className={`relative hidden h-full min-h-0 shrink-0 flex-col border-r border-border/70 bg-surface/40 md:flex ${
         resizing || animating ? "" : "transition-[width] duration-150 ease-out"
       }`}
     >
+      <div className={`shrink-0 border-b border-border/70 ${showBranding ? "px-4 py-5" : "flex justify-center py-4"}`}>
+        <EukovLogo compact={!showBranding} />
+      </div>
+
       <nav
         aria-label="Main navigation"
-        className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2"
+        className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3"
       >
+        <p
+          className={`mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted ${
+            showBranding ? "opacity-100" : "sr-only"
+          }`}
+        >
+          Navigate
+        </p>
         <NavLinks pathname={pathname} width={width} />
       </nav>
 
-      <div className="border-t border-border p-2">
+      <div className="border-t border-border/70 p-3">
         <SidebarToggle collapsed={collapsed} onToggle={toggle} />
       </div>
 
@@ -394,7 +369,7 @@ export function Sidebar() {
           startResize();
         }}
         className={`absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none ${
-          resizing ? "bg-accent/35" : "hover:bg-accent/20"
+          resizing ? "bg-accent-warm/35" : "hover:bg-accent-warm/20"
         }`}
       />
     </aside>
@@ -407,7 +382,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="Mobile navigation"
-      className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-background p-2 md:hidden"
+      className="flex shrink-0 gap-1 overflow-x-auto border-b border-border/70 bg-surface/50 p-2 md:hidden"
     >
       <NavLinks pathname={pathname} width={SIDEBAR_EXPANDED_MIN} />
     </nav>
@@ -416,17 +391,11 @@ export function MobileNav() {
 
 interface AppShellProps {
   children: React.ReactNode;
-  /** Reduce main padding and allow children to fill height. */
   compact?: boolean;
-  /** Hide sidebar and mobile nav (e.g. immersive reader). */
   hideSidebar?: boolean;
 }
 
-export function AppShell({
-  children,
-  compact = false,
-  hideSidebar = false,
-}: AppShellProps) {
+export function AppShell({ children, compact = false, hideSidebar = false }: AppShellProps) {
   const [width, setWidth] = useState(SIDEBAR_DEFAULT);
   const [resizing, setResizing] = useState(false);
   const [animating, setAnimating] = useState(false);
@@ -437,8 +406,7 @@ export function AppShell({
   useEffect(() => {
     const stored = readSidebarWidth();
     widthRef.current = stored;
-    expandedWidthRef.current =
-      stored >= SIDEBAR_EXPANDED_MIN ? stored : SIDEBAR_DEFAULT;
+    expandedWidthRef.current = stored >= SIDEBAR_EXPANDED_MIN ? stored : SIDEBAR_DEFAULT;
     setWidth(stored);
   }, []);
 
@@ -503,9 +471,7 @@ export function AppShell({
   }, [width]);
 
   useEffect(() => {
-    if (!resizing) {
-      return;
-    }
+    if (!resizing) return;
 
     const onMove = (event: MouseEvent) => {
       const next = clampSidebarWidth(event.clientX);
@@ -550,22 +516,27 @@ export function AppShell({
     <SidebarContext.Provider
       value={{ width, collapsed, resizing, animating, startResize, toggle }}
     >
-      <div className="flex h-screen flex-col overflow-hidden bg-page">
-        <TopNav />
-        {!hideSidebar && <MobileNav />}
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          {!hideSidebar && <Sidebar />}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <main
-              className={`flex min-h-0 flex-1 flex-col ${
-                compact
-                  ? "overflow-hidden p-2 md:p-3"
-                  : "overflow-y-auto p-4 md:p-8"
-              }`}
-            >
-              {children}
-            </main>
-            {!compact && <PortalFooter />}
+      <div className="relative flex h-screen flex-col bg-page p-0 md:p-3 lg:p-4">
+        <div className="portal-shell portal-animate-in flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border border-border/60 bg-background md:rounded-[1.25rem]">
+          {!hideSidebar && (
+            <div className="flex items-center justify-between border-b border-border/70 px-4 py-3 md:hidden">
+              <EukovLogo />
+            </div>
+          )}
+          <TopNav />
+          {!hideSidebar && <MobileNav />}
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            {!hideSidebar && <Sidebar />}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <main
+                className={`portal-animate-in flex min-h-0 flex-1 flex-col ${
+                  compact ? "overflow-hidden p-2 md:p-3" : "overflow-y-auto p-4 md:p-8 lg:p-10"
+                }`}
+              >
+                {children}
+              </main>
+              {!compact && <PortalFooter />}
+            </div>
           </div>
         </div>
       </div>

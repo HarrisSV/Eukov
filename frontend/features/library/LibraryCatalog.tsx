@@ -75,14 +75,14 @@ export function LibraryCatalog() {
   );
 
   return (
-    <div className="flex flex-col gap-8">
-      <section className="flex flex-col gap-4">
-        <h2 className="text-xl font-bold text-foreground">Discover</h2>
-        <p className="text-sm text-muted">
+    <div className="flex flex-col gap-10">
+      <section className="portal-card rounded-2xl border border-border/70 bg-background p-5 md:p-6">
+        <h2 className="font-serif text-xl font-semibold text-foreground">Discover</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
           Preview the first 250 words free. Subscribe to an author to read the full book — it saves to your docket automatically.
         </p>
         <form
-          className="grid grid-cols-1 gap-3 md:grid-cols-4"
+          className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4"
           onSubmit={(e) => {
             e.preventDefault();
             setSearch(query.trim());
@@ -93,13 +93,13 @@ export function LibraryCatalog() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search title, author, genre..."
-            className="border-2 border-foreground bg-surface px-3 py-2 text-foreground md:col-span-2"
+            className="portal-input px-4 py-2.5 text-sm md:col-span-2"
             aria-label="Search library"
           />
           <select
             value={genreId}
             onChange={(e) => setGenreId(e.target.value)}
-            className="border-2 border-foreground bg-surface px-3 py-2 text-foreground"
+            className="portal-input px-4 py-2.5 text-sm"
             aria-label="Filter by genre"
           >
             <option value="">All genres</option>
@@ -111,10 +111,8 @@ export function LibraryCatalog() {
           </select>
           <select
             value={sort}
-            onChange={(e) =>
-              setSort(e.target.value as LibraryQueryParams["sort"])
-            }
-            className="border-2 border-foreground bg-surface px-3 py-2 text-foreground"
+            onChange={(e) => setSort(e.target.value as LibraryQueryParams["sort"])}
+            className="portal-input px-4 py-2.5 text-sm"
             aria-label="Sort library"
           >
             {SORT_OPTIONS.map((opt) => (
@@ -127,8 +125,13 @@ export function LibraryCatalog() {
       </section>
 
       {recommendedBooks.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xl font-bold text-foreground">Recommended for you</h2>
+        <section className="flex flex-col gap-4">
+          <div className="flex items-end justify-between gap-4">
+            <h2 className="font-serif text-xl font-semibold text-foreground">Recommended for you</h2>
+            <span className="text-xs font-medium uppercase tracking-[0.14em] text-accent-warm">
+              Curated picks
+            </span>
+          </div>
           <div
             className="-mx-1 overflow-x-auto px-1 pb-2"
             role="region"
@@ -153,7 +156,7 @@ export function LibraryCatalog() {
       )}
 
       <section className="flex min-h-0 flex-col gap-4">
-        <h2 className="text-xl font-bold text-foreground">Catalog</h2>
+        <h2 className="font-serif text-xl font-semibold text-foreground">Catalog</h2>
         {libraryQuery.isLoading && (
           <p className="text-sm text-muted">Loading library...</p>
         )}
@@ -200,54 +203,67 @@ function LibraryCard({
   onPreview: () => void;
 }) {
   return (
-    <article className="wireframe-panel flex flex-col gap-3 border-2 border-foreground bg-background p-4">
+    <article className="group portal-card flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-background transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-warm/30">
       {book.coverUrl ? (
-        <div className="aspect-[2/3] w-full overflow-hidden border border-foreground bg-surface">
+        <div className="relative aspect-[2/3] w-full overflow-hidden bg-surface">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={book.coverUrl}
             alt=""
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
             loading="lazy"
           />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
         </div>
-      ) : null}
-      <h3 className="font-bold text-foreground">{book.title}</h3>
-      {book.authorName ? (
-        <p className="text-sm text-muted">-by {book.authorName}</p>
-      ) : null}
-      {book.genreName && (
-        <p className="text-sm text-muted">{formatGenreLabel(book.genreName)}</p>
+      ) : (
+        <div className="flex aspect-[2/3] w-full items-center justify-center bg-surface">
+          <span className="font-serif text-4xl text-muted/40">E</span>
+        </div>
       )}
-      {book.summary && (
-        <p className="line-clamp-3 text-sm text-foreground">{book.summary}</p>
-      )}
-      {"reason" in book && book.reason ? (
-        <p className="text-xs text-muted">AI pick: {book.reason}</p>
-      ) : null}
-      {book.tags.length > 0 && (
-        <ul className="flex flex-wrap gap-1">
-          {book.tags.map((tag) => (
-            <li
-              key={tag}
-              className="border border-foreground px-2 py-0.5 text-xs uppercase"
-            >
-              {tag}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="mt-auto flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onPreview}
-          className="w-full border-2 border-foreground bg-foreground px-3 py-2 text-sm font-medium text-background"
-        >
-          Preview · Read more
-        </button>
-        {continueReading ? (
-          <p className="text-center text-sm font-medium text-foreground">continue reading...</p>
+      <div className="flex flex-1 flex-col gap-2.5 p-4">
+        <h3 className="font-serif text-lg font-semibold leading-snug text-foreground">{book.title}</h3>
+        {book.authorName ? (
+          <p className="text-sm text-muted">by {book.authorName}</p>
         ) : null}
+        {book.genreName && (
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-accent-warm">
+            {formatGenreLabel(book.genreName)}
+          </p>
+        )}
+        {book.summary && (
+          <p className="line-clamp-3 text-sm leading-relaxed text-muted">{book.summary}</p>
+        )}
+        {"reason" in book && book.reason ? (
+          <p className="rounded-lg bg-accent-soft px-2.5 py-1.5 text-xs text-accent-warm">
+            AI pick · {book.reason}
+          </p>
+        ) : null}
+        {book.tags.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5">
+            {book.tags.map((tag) => (
+              <li
+                key={tag}
+                className="rounded-full border border-border/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted"
+              >
+                {tag}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-auto flex flex-col gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onPreview}
+            className="portal-btn-primary w-full px-3 py-2.5 text-sm"
+          >
+            Preview · Read more
+          </button>
+          {continueReading ? (
+            <p className="text-center text-xs font-medium uppercase tracking-[0.12em] text-accent-warm">
+              Continue reading
+            </p>
+          ) : null}
+        </div>
       </div>
     </article>
   );

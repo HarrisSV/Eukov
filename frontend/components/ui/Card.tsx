@@ -8,6 +8,7 @@ interface CardProps {
   badge?: string;
   headerAction?: ReactNode;
   description?: string;
+  variant?: "default" | "hero" | "ghost";
 }
 
 export function Card({
@@ -18,27 +19,35 @@ export function Card({
   badge,
   headerAction,
   description,
+  variant = "default",
 }: CardProps) {
   const titleId = `card-${title.replace(/\s+/g, "-").toLowerCase()}`;
 
+  const variantClass =
+    variant === "hero"
+      ? "portal-hero border-accent-warm/20"
+      : variant === "ghost"
+        ? "border-transparent bg-transparent shadow-none"
+        : "border-border/70 bg-background";
+
   return (
     <section
-      className={`portal-card rounded-2xl border border-border/80 bg-background p-5 shadow-sm md:p-6 ${className}`}
+      className={`portal-card rounded-2xl border p-5 md:p-6 ${variantClass} ${className}`}
       aria-labelledby={titleId}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
             {icon ? (
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-warm">
                 {icon}
               </span>
             ) : null}
-            <h2 id={titleId} className="text-base font-semibold text-foreground md:text-lg">
+            <h2 id={titleId} className="font-serif text-lg font-semibold text-foreground md:text-xl">
               {title}
             </h2>
             {badge ? (
-              <span className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs font-medium text-muted">
+              <span className="rounded-full border border-border/80 bg-surface px-2.5 py-0.5 text-xs font-medium text-muted">
                 {badge}
               </span>
             ) : null}

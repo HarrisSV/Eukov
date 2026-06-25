@@ -18,13 +18,17 @@ export function PortalFooter() {
       : "Degraded";
 
   return (
-    <footer className="mt-auto shrink-0 border-t border-border bg-background px-4 py-4 md:px-8">
+    <footer className="mt-auto shrink-0 border-t border-border/70 bg-background/60 px-4 py-4 backdrop-blur-sm md:px-8">
       <div className="flex flex-col gap-2 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
-        <p>© {new Date().getFullYear()} EUKOV Infrastructure</p>
-        <div className="flex gap-4">
-          <span className="cursor-default">Privacy Policy</span>
+        <p className="font-medium tracking-wide">
+          © {new Date().getFullYear()} EUKOV Infrastructure
+        </p>
+        <div className="flex gap-5">
+          <span className="cursor-default transition-colors hover:text-foreground">
+            Privacy Policy
+          </span>
           <span
-            className="flex items-center gap-1.5 cursor-default"
+            className="flex items-center gap-1.5 cursor-default transition-colors hover:text-foreground"
             title={statusLabel}
           >
             <span

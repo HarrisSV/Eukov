@@ -36,7 +36,7 @@ describe("LibraryCatalog", () => {
   it("renders catalog books", async () => {
     renderWithClient(<LibraryCatalog />);
     expect(await screen.findByText("Test Book")).toBeInTheDocument();
-    expect(screen.getByText("-by Jane Austen")).toBeInTheDocument();
+    expect(screen.getByText("by Jane Austen")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /preview/i })).toBeInTheDocument();
   });
 });

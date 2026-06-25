@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DashboardContent } from "@/features/dashboard/DashboardContent";
 import { useAuthStore } from "@/store/authStore";
 
-const healthMock = vi.fn();
 const getPreferencesMock = vi.fn();
 const meMock = vi.fn();
 
@@ -14,7 +13,6 @@ vi.mock("@/services/api", async () => {
     ...actual,
     api: {
       ...actual.api,
-      health: (...args: unknown[]) => healthMock(...args),
       getPreferences: (...args: unknown[]) => getPreferencesMock(...args),
       me: (...args: unknown[]) => meMock(...args),
     },
@@ -23,7 +21,6 @@ vi.mock("@/services/api", async () => {
 
 describe("DashboardContent", () => {
   beforeEach(() => {
-    healthMock.mockReset();
     getPreferencesMock.mockReset();
     meMock.mockReset();
     useAuthStore.setState({
@@ -48,8 +45,7 @@ describe("DashboardContent", () => {
     });
   });
 
-  it("renders persisted preferences and healthy state", async () => {
-    healthMock.mockResolvedValue({ status: "healthy" });
+  it("renders persisted preferences and quick links", async () => {
     getPreferencesMock.mockResolvedValue({ genres: ["history", "science"] });
 
     const queryClient = new QueryClient();
@@ -60,13 +56,12 @@ describe("DashboardContent", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Reader Dashboard")).toBeInTheDocument();
-      expect(screen.getByText("Welcome back,")).toBeInTheDocument();
-      expect(screen.getByText("reader")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "You" })).toBeInTheDocument();
+      expect(screen.getByText(/Welcome back, reader/i)).toBeInTheDocument();
       expect(screen.getByText("Reader Example")).toBeInTheDocument();
       expect(screen.getByText("History")).toBeInTheDocument();
       expect(screen.getByText("Science")).toBeInTheDocument();
-      expect(screen.getByText("Healthy")).toBeInTheDocument();
+      expect(screen.getByText("Library")).toBeInTheDocument();
     });
   });
 });

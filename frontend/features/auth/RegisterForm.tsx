@@ -85,7 +85,7 @@ export function RegisterForm() {
             id="firstName"
             type="text"
             autoComplete="given-name"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+            className="portal-input w-full px-3 py-2"
             {...register("firstName")}
           />
           {errors.firstName && (
@@ -103,7 +103,7 @@ export function RegisterForm() {
             id="middleName"
             type="text"
             autoComplete="additional-name"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+            className="portal-input w-full px-3 py-2"
             {...register("middleName")}
           />
         </div>
@@ -117,7 +117,7 @@ export function RegisterForm() {
           id="lastName"
           type="text"
           autoComplete="family-name"
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+          className="portal-input w-full px-3 py-2"
           {...register("lastName")}
         />
         {errors.lastName && (
@@ -135,7 +135,7 @@ export function RegisterForm() {
           id="nickname"
           type="text"
           autoComplete="nickname"
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+          className="portal-input w-full px-3 py-2"
           {...register("nickname")}
         />
         <p className="mt-1 text-xs text-muted">
@@ -156,7 +156,7 @@ export function RegisterForm() {
           id="email"
           type="email"
           autoComplete="email"
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+          className="portal-input w-full px-3 py-2"
           {...register("email")}
         />
         {errors.email && (
@@ -174,7 +174,7 @@ export function RegisterForm() {
           id="password"
           type="password"
           autoComplete="new-password"
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+          className="portal-input w-full px-3 py-2"
           {...register("password")}
         />
         {errors.password && (
@@ -195,7 +195,7 @@ export function RegisterForm() {
           id="confirmPassword"
           type="password"
           autoComplete="new-password"
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+          className="portal-input w-full px-3 py-2"
           {...register("confirmPassword")}
         />
         {errors.confirmPassword && (
@@ -214,7 +214,7 @@ export function RegisterForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className="portal-btn-primary w-full px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isSubmitting ? "Creating account..." : "Create Account"}
       </button>

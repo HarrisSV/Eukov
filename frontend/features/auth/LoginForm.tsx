@@ -71,7 +71,7 @@ export function LoginForm() {
           id="login-email"
           type="email"
           autoComplete="email"
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+          className="portal-input w-full px-3 py-2"
           {...register("email")}
         />
         {errors.email && (
@@ -89,7 +89,7 @@ export function LoginForm() {
           id="login-password"
           type="password"
           autoComplete="current-password"
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+          className="portal-input w-full px-3 py-2"
           {...register("password")}
         />
         {errors.password && (
@@ -108,7 +108,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className="portal-btn-primary w-full px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isSubmitting ? "Signing in..." : "Login"}
       </button>
