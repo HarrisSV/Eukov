@@ -73,6 +73,8 @@ type DocumentMetadata struct {
 	GenreID     uuid.UUID `gorm:"type:uuid;not null" json:"genreId"`
 	Summary     string    `gorm:"type:text;not null;default:''" json:"summary"`
 	ReadingTime int       `gorm:"not null;default:0" json:"readingTime"`
+	CoverURL    string    `gorm:"type:text;not null;default:''" json:"coverUrl"`
+	AuthorName  string    `gorm:"type:text;not null;default:''" json:"authorName"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 

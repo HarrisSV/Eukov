@@ -14,6 +14,8 @@ type RecommendationService struct {
 	tags      *repository.DocumentTagRepository
 	activity  *repository.ReaderActivityRepository
 	prefs     *repository.PreferenceRepository
+	progress  *repository.ReadingProgressRepository
+	ai        *AIService
 }
 
 func NewRecommendationService(
@@ -21,18 +23,23 @@ func NewRecommendationService(
 	tags *repository.DocumentTagRepository,
 	activity *repository.ReaderActivityRepository,
 	prefs *repository.PreferenceRepository,
+	progress *repository.ReadingProgressRepository,
+	ai *AIService,
 ) *RecommendationService {
 	return &RecommendationService{
 		documents: documents,
 		tags:      tags,
 		activity:  activity,
 		prefs:     prefs,
+		progress:  progress,
+		ai:        ai,
 	}
 }
 
 type RecommendedBook struct {
 	LibraryBookView
-	Score int `json:"score"`
+	Score  int    `json:"score"`
+	Reason string `json:"reason,omitempty"`
 }
 
 func (s *RecommendationService) Recommend(ctx context.Context, readerID uuid.UUID, limit int) ([]RecommendedBook, error) {
@@ -51,16 +58,39 @@ func (s *RecommendationService) Recommend(ctx context.Context, readerID uuid.UUI
 	for _, id := range readerGenres {
 		genreSet[id] = struct{}{}
 	}
-	activity, err := s.activity.ListByReader(ctx, readerID, 50)
+	genreNames, err := s.prefs.GetUserGenreNames(ctx, readerID)
+	if err != nil {
+		return nil, err
+	}
+
+	activity, err := s.activity.ListByReader(ctx, readerID, 100)
 	if err != nil {
 		return nil, err
 	}
 	activityDocs := make(map[uuid.UUID]struct{}, len(activity))
+	activityTypes := make(map[string]int, len(activity))
 	for _, a := range activity {
 		activityDocs[a.DocumentID] = struct{}{}
+		activityTypes[a.ActivityType]++
+	}
+
+	progressRows, err := s.progress.ListByReader(ctx, readerID)
+	if err != nil {
+		return nil, err
+	}
+	progressDocs := make(map[uuid.UUID]modelsReadingProgressLite, len(progressRows))
+	for _, row := range progressRows {
+		progressDocs[row.DocumentID] = modelsReadingProgressLite{
+			CurrentPage:          row.CurrentPage,
+			CompletionPercentage: row.CompletionPercentage,
+		}
 	}
 
 	recs := make([]RecommendedBook, 0, len(rows))
+	tagFrequency := make(map[string]int)
+	readTitles := make([]string, 0, 16)
+	inProgressTitles := make([]string, 0, 8)
+
 	for _, row := range rows {
 		score := 0
 		if row.GenreID != nil {
@@ -70,6 +100,13 @@ func (s *RecommendationService) Recommend(ctx context.Context, readerID uuid.UUI
 		}
 		if _, ok := activityDocs[row.ID]; ok {
 			score += 5
+		}
+		if progress, ok := progressDocs[row.ID]; ok {
+			if progress.CompletionPercentage >= 95 {
+				score += 8
+			} else if progress.CurrentPage > 1 {
+				score += 6
+			}
 		}
 		if row.PublishedAt != nil {
 			days := int(time.Since(*row.PublishedAt).Hours() / 24)
@@ -83,15 +120,27 @@ func (s *RecommendationService) Recommend(ctx context.Context, readerID uuid.UUI
 		if err != nil {
 			return nil, err
 		}
+		for _, tag := range tagNames {
+			tagFrequency[tag]++
+		}
+		if _, ok := activityDocs[row.ID]; ok {
+			readTitles = appendUniqueTitle(readTitles, row.Title)
+		}
+		if progress, ok := progressDocs[row.ID]; ok && progress.CurrentPage > 1 && progress.CompletionPercentage < 95 {
+			inProgressTitles = appendUniqueTitle(inProgressTitles, row.Title)
+		}
+
 		recs = append(recs, RecommendedBook{
 			LibraryBookView: LibraryBookView{
 				ID:          row.ID,
 				Title:       row.Title,
 				AuthorID:    row.AuthorID,
 				AuthorEmail: row.AuthorEmail,
+				AuthorName:  row.AuthorName,
 				GenreID:     row.GenreID,
 				GenreName:   row.GenreName,
 				Summary:     row.Summary,
+				CoverURL:    row.CoverURL,
 				Tags:        tagNames,
 				OpenCount:   row.OpenCount,
 				PublishedAt: row.PublishedAt,
@@ -99,6 +148,7 @@ func (s *RecommendationService) Recommend(ctx context.Context, readerID uuid.UUI
 			Score: score,
 		})
 	}
+
 	sort.Slice(recs, func(i, j int) bool {
 		if recs[i].Score != recs[j].Score {
 			return recs[i].Score > recs[j].Score
@@ -112,8 +162,44 @@ func (s *RecommendationService) Recommend(ctx context.Context, readerID uuid.UUI
 		}
 		return ti.After(tj)
 	})
+
+	candidateLimit := limit * 3
+	if candidateLimit < 12 {
+		candidateLimit = 12
+	}
+	if len(recs) > candidateLimit {
+		recs = recs[:candidateLimit]
+	}
+
+	if s.ai != nil && s.ai.Enabled() {
+		profile := ReaderInterestProfile{
+			GenreNames:       genreNames,
+			ReadTitles:       readTitles,
+			InProgressTitles: inProgressTitles,
+			ActivityTypes:    activityTypes,
+			TagFrequency:     tagFrequency,
+		}
+		if reranked, err := s.ai.RerankRecommendations(ctx, profile, recs, limit); err == nil && len(reranked) > 0 {
+			return reranked, nil
+		}
+	}
+
 	if len(recs) > limit {
 		recs = recs[:limit]
 	}
 	return recs, nil
+}
+
+type modelsReadingProgressLite struct {
+	CurrentPage          int
+	CompletionPercentage float64
+}
+
+func appendUniqueTitle(items []string, title string) []string {
+	for _, existing := range items {
+		if existing == title {
+			return items
+		}
+	}
+	return append(items, title)
 }

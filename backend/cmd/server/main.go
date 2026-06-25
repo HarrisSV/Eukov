@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/eukov/backend/internal/ai"
 	"github.com/eukov/backend/internal/api"
 	"github.com/eukov/backend/internal/auth"
 	"github.com/eukov/backend/internal/config"
@@ -87,6 +88,7 @@ func main() {
 		unpublishRepo,
 		publishAuditRepo,
 		auditSvc,
+		inboxSvc,
 	)
 	docketSvc := service.NewDocketService(docketItemRepo, documentRepo, tagRepo, genreRepo, metadataRepo)
 	adminActivitySvc := service.NewAdminActivityService(userRepo, documentRepo, publishAuditRepo, unpublishRepo)
@@ -97,11 +99,13 @@ func main() {
 	readerActivityRepo := repository.NewReaderActivityRepository(db)
 
 	librarySvc := service.NewLibraryService(documentRepo, tagRepo, genreRepo)
-	recommendationSvc := service.NewRecommendationService(documentRepo, tagRepo, readerActivityRepo, prefRepo)
+	qwenClient := ai.NewQwenClientFromEnv()
+	aiSvc := service.NewAIService(qwenClient, documentRepo, fileSvc)
+	recommendationSvc := service.NewRecommendationService(documentRepo, tagRepo, readerActivityRepo, prefRepo, readingProgressRepo, aiSvc)
 	issuanceSvc := service.NewIssuanceService(issuedBookRepo, documentRepo, authorSubRepo, userRepo, readerActivityRepo, docketItemRepo, readingProgressRepo)
 	subscriptionSvc := service.NewSubscriptionService(authorSubRepo, userRepo, docketItemRepo, auditSvc, issuanceSvc)
 	progressSvc := service.NewProgressService(readingProgressRepo, issuanceSvc, readerActivityRepo, fileSvc, documentRepo)
-	readingSvc := service.NewReadingService(documentRepo, fileSvc, issuanceSvc, readingProgressRepo)
+	readingSvc := service.NewReadingService(documentRepo, tagRepo, fileSvc, issuanceSvc, readingProgressRepo)
 
 	handler := api.NewHandler(
 		userSvc,
@@ -122,6 +126,7 @@ func main() {
 		issuanceSvc,
 		progressSvc,
 		readingSvc,
+		aiSvc,
 	)
 
 	authLimiter := middleware.NewRateLimiter(20, time.Minute)

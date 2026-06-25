@@ -58,6 +58,7 @@ func setupDocumentService(t *testing.T) (*DocumentService, uuid.UUID) {
 		repository.NewUnpublishRepository(db),
 		repository.NewPublishAuditEventRepository(db),
 		NewAuditService(auditRepo),
+		nil,
 	)
 	return svc, authorID
 }

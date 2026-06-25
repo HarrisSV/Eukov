@@ -35,3 +35,13 @@ export function scrollToReadingPosition(
 
   container.scrollIntoView({ block: "center", behavior: "smooth" });
 }
+
+export function scrollToChapterMarker(container: HTMLElement, chapterId: string): void {
+  const marker = container.querySelector(`[data-chapter-id="${chapterId}"]`);
+  if (marker instanceof HTMLElement) {
+    marker.scrollIntoView({ block: "start", behavior: "smooth" });
+    return;
+  }
+
+  container.scrollTop = 0;
+}

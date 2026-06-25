@@ -21,6 +21,8 @@ function formatMessageType(type: string): string {
       return "Author approved";
     case "BOOK_RELEASE":
       return "New release";
+    case "SCRIPT_TAKEDOWN":
+      return "Script takedown";
     default:
       return type.replaceAll("_", " ").toLowerCase();
   }

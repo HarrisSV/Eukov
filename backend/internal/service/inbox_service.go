@@ -18,6 +18,7 @@ const (
 	InboxTypeAuthorRequest    = "AUTHOR_REQUEST"
 	InboxTypeAuthorPromoted   = "AUTHOR_PROMOTED"
 	InboxTypeBookRelease      = "BOOK_RELEASE"
+	InboxTypeScriptTakedown   = "SCRIPT_TAKEDOWN"
 )
 
 type InboxService struct {
@@ -67,6 +68,20 @@ func (s *InboxService) NotifyAdmins(ctx context.Context, senderID uuid.UUID, mes
 		}
 	}
 	return nil
+}
+
+func (s *InboxService) NotifyScriptTakedown(ctx context.Context, authorID, documentID uuid.UUID, title string) error {
+	subject := fmt.Sprintf("Takedown complete: %s", title)
+	body := fmt.Sprintf(
+		"Your published script \"%s\" has been taken down and moved back to drafts.\n\nDocument ID: %s",
+		title,
+		documentID.String(),
+	)
+	relatedID := documentID
+	return s.NotifyUser(ctx, authorID, nil, InboxTypeScriptTakedown, subject, body, &relatedID, map[string]any{
+		"documentId": documentID.String(),
+		"title":      title,
+	})
 }
 
 func (s *InboxService) NotifyBookRelease(ctx context.Context, authorID uuid.UUID, documentID uuid.UUID, title, authorLabel string, subscriberIDs []uuid.UUID) error {

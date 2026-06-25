@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/Card";
-import { api, formatRoleLabel } from "@/services/api";
+import { api, formatAuthorActivityLabel, formatRoleLabel } from "@/services/api";
 
 export function AuthorActivityPanel() {
   const query = useQuery({
@@ -30,7 +30,9 @@ export function AuthorActivityPanel() {
           <tbody>
             {query.data?.authors.map((author) => (
               <tr key={author.userId} className="border-b border-foreground">
-                <td className="border-r border-foreground px-3 py-2">{author.email}</td>
+                <td className="border-r border-foreground px-3 py-2">
+                  {formatAuthorActivityLabel(author)}
+                </td>
                 <td className="border-r border-foreground px-3 py-2">{formatRoleLabel(author.role)}</td>
                 <td className="border-r border-foreground px-3 py-2 text-center">{author.draftCount}</td>
                 <td className="border-r border-foreground px-3 py-2 text-center">{author.publishedCount}</td>

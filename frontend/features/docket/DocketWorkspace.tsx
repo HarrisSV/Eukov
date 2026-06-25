@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { api } from "@/services/api";
 import type { DocumentSummary } from "@/services/api";
+import { resolveReadingResumePage } from "@/lib/reading-bookmark";
 import { useAuthStore } from "@/store/authStore";
 import { roles } from "@/lib/roles";
 
@@ -63,7 +64,7 @@ function DocketShelf({
       </ShelfStrip>
 
       <ShelfStrip label="Published">
-        <DocStrip items={ws?.published ?? []} />
+        <DocStrip items={ws?.published ?? []} readOnly />
       </ShelfStrip>
     </div>
   );
@@ -94,9 +95,11 @@ function ShelfStrip({
 function DocStrip({
   items,
   showNewDraft = false,
+  readOnly = false,
 }: {
   items: DocumentSummary[];
   showNewDraft?: boolean;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
 
@@ -108,14 +111,18 @@ function DocStrip({
     <ul className="flex w-max min-w-full gap-2">
       {items.map((doc) => (
         <li key={doc.id} className="shrink-0">
-          <button
-            type="button"
-            onClick={() => router.push(`/dashboard/docket/editor/${doc.id}`)}
-            className="flex h-full min-w-[9rem] max-w-[12rem] flex-col border-2 border-foreground px-3 py-2 text-left text-sm hover:bg-surface"
-          >
-            <span className="line-clamp-2">{doc.title}</span>
-            <span className="mt-1 text-xs uppercase text-muted">{doc.status}</span>
-          </button>
+          {readOnly ? (
+            <PublishedDocCard doc={doc} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => router.push(`/dashboard/docket/editor/${doc.id}`)}
+              className="flex h-full min-w-[9rem] max-w-[12rem] flex-col border-2 border-foreground px-3 py-2 text-left text-sm hover:bg-surface"
+            >
+              <span className="line-clamp-2">{doc.title}</span>
+              <span className="mt-1 text-xs uppercase text-muted">{doc.status}</span>
+            </button>
+          )}
         </li>
       ))}
       {showNewDraft && (
@@ -131,6 +138,47 @@ function DocStrip({
         </li>
       )}
     </ul>
+  );
+}
+
+function PublishedDocCard({ doc }: { doc: DocumentSummary }) {
+  const [copyVisible, setCopyVisible] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(doc.id);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="flex min-w-[11rem] max-w-[14rem] cursor-default flex-col border-2 border-foreground px-3 py-2 text-sm">
+      <span className="line-clamp-2">{doc.title}</span>
+      <span className="mt-1 text-xs uppercase text-muted">{doc.status}</span>
+      <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
+        <button
+          type="button"
+          onClick={() => setCopyVisible((visible) => !visible)}
+          className="min-w-0 flex-1 truncate text-left font-mono text-[10px] leading-snug text-muted"
+          title={doc.id}
+        >
+          {doc.id}
+        </button>
+        {copyVisible ? (
+          <button
+            type="button"
+            onClick={() => void handleCopy()}
+            className="shrink-0 border border-foreground px-1.5 py-0.5 text-[10px] font-medium uppercase"
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -188,7 +236,7 @@ function ReaderDocketPanel({ ws }: { ws?: Awaited<ReturnType<typeof api.getDocke
                 </p>
               </div>
               <Link
-                href={`/dashboard/read/${book.documentId}?page=${book.currentPage}&from=docket`}
+                href={`/dashboard/read/${book.documentId}?from=docket&page=${resolveReadingResumePage(book.documentId, null, book.currentPage)}`}
                 className="border-2 border-foreground bg-foreground px-3 py-1 text-sm font-medium text-background"
               >
                 Continue

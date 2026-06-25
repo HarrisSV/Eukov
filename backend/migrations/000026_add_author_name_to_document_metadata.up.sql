@@ -1,0 +1,1 @@
+ALTER TABLE document_metadata ADD COLUMN IF NOT EXISTS author_name TEXT NOT NULL DEFAULT '';

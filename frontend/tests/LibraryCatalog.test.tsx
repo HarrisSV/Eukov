@@ -13,6 +13,7 @@ vi.mock("@/services/api", () => ({
           title: "Test Book",
           authorId: "a1",
           authorEmail: "author@test.com",
+          authorName: "Jane Austen",
           genreName: "history",
           tags: ["war"],
           openCount: 0,
@@ -20,6 +21,7 @@ vi.mock("@/services/api", () => ({
       ],
     }),
     getRecommendedLibrary: vi.fn().mockResolvedValue({ books: [] }),
+    getDocketBooks: vi.fn().mockResolvedValue({ books: [] }),
     getDocumentPreview: vi.fn(),
   },
   formatGenreLabel: (name: string) => name.charAt(0).toUpperCase() + name.slice(1),
@@ -34,7 +36,7 @@ describe("LibraryCatalog", () => {
   it("renders catalog books", async () => {
     renderWithClient(<LibraryCatalog />);
     expect(await screen.findByText("Test Book")).toBeInTheDocument();
-    expect(screen.getByText("author@test.com")).toBeInTheDocument();
+    expect(screen.getByText("-by Jane Austen")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /preview/i })).toBeInTheDocument();
   });
 });

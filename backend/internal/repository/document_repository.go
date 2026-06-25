@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/eukov/backend/internal/models"
@@ -133,6 +134,8 @@ type LibraryDocumentRow struct {
 	AuthorEmail string `gorm:"column:author_email"`
 	GenreName   string `gorm:"column:genre_name"`
 	Summary     string `gorm:"column:summary"`
+	CoverURL    string `gorm:"column:cover_url"`
+	AuthorName  string `gorm:"column:author_name"`
 	OpenCount   int64  `gorm:"column:open_count"`
 }
 
@@ -141,6 +144,8 @@ func (r *DocumentRepository) SearchPublished(ctx context.Context, params Library
 		Table("documents").
 		Select(`documents.*, users.email AS author_email, genres.name AS genre_name,
 			COALESCE(document_metadata.summary, '') AS summary,
+			COALESCE(document_metadata.cover_url, '') AS cover_url,
+			COALESCE(document_metadata.author_name, '') AS author_name,
 			(SELECT COUNT(*) FROM reader_activity ra
 			 WHERE ra.document_id = documents.id AND ra.activity_type = 'BOOK_OPENED') AS open_count`).
 		Joins("JOIN users ON users.id = documents.author_id").
@@ -160,8 +165,9 @@ func (r *DocumentRepository) SearchPublished(ctx context.Context, params Library
 			LOWER(documents.title) LIKE LOWER(?) OR LOWER(users.email) LIKE LOWER(?)
 			OR LOWER(COALESCE(genres.name, '')) LIKE LOWER(?)
 			OR LOWER(COALESCE(document_metadata.summary, '')) LIKE LOWER(?)
+			OR LOWER(COALESCE(document_metadata.author_name, '')) LIKE LOWER(?)
 			OR EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = documents.id AND LOWER(dt.tag) LIKE LOWER(?))
-		)`, like, like, like, like, like)
+		)`, like, like, like, like, like, like)
 	}
 
 	switch params.Sort {
@@ -316,6 +322,10 @@ func (r *DocumentMetadataRepository) Upsert(ctx context.Context, meta *models.Do
 	existing.GenreID = meta.GenreID
 	existing.Summary = meta.Summary
 	existing.ReadingTime = meta.ReadingTime
+	existing.CoverURL = meta.CoverURL
+	if strings.TrimSpace(meta.AuthorName) != "" {
+		existing.AuthorName = meta.AuthorName
+	}
 	return r.db.WithContext(ctx).Save(&existing).Error
 }
 

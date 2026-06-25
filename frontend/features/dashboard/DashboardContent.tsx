@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect } from "react";
 import { Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { AccessKeyForm } from "@/features/auth/AccessKeyForm";
 import { AuthorReviewQueue } from "@/features/admin/AuthorReviewQueue";
 import { SuperAdminPanel } from "@/features/admin/SuperAdminPanel";
@@ -25,19 +26,12 @@ export function DashboardContent() {
 
   const displayUser = profileQuery.data ?? user;
 
-  const healthQuery = useQuery({
-    queryKey: ["health"],
-    queryFn: api.health,
-    refetchInterval: 30_000,
-  });
-
   const preferencesQuery = useQuery({
     queryKey: ["preferences", user?.id],
     queryFn: () => api.getPreferences(user!.id),
     enabled: Boolean(user?.id),
   });
 
-  const isHealthy = healthQuery.data?.status === "healthy";
   const role = displayUser?.role ?? roles.Reader;
 
   useEffect(() => {
@@ -48,18 +42,16 @@ export function DashboardContent() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">
-          {role === roles.SuperAdmin
-            ? "Super Admin Dashboard"
+      <PageHeader
+        title="You"
+        description={
+          role === roles.SuperAdmin
+            ? "Your profile, platform tools, security controls, and audit activity."
             : role === roles.Admin
-              ? "Admin Dashboard"
-              : "Reader Dashboard"}
-        </h1>
-        <p className="mt-2 text-muted">
-          Phase 2 access layer — authentication, RBAC, and governance.
-        </p>
-      </div>
+              ? "Your profile, author reviews, and publishing activity."
+              : "Your reading preferences, docket, and library access."
+        }
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-2">
         <Card title="Welcome">
@@ -116,24 +108,6 @@ export function DashboardContent() {
             )
           )}
         </Card>
-
-        <Card title="API Status">
-          <div className="flex items-center gap-3">
-            <span
-              className={`inline-block h-3 w-3 rounded-full ${
-                isHealthy ? "bg-success" : "bg-danger"
-              }`}
-              aria-hidden="true"
-            />
-            <span className="font-medium">
-              {healthQuery.isLoading
-                ? "Checking..."
-                : isHealthy
-                  ? "Healthy"
-                  : "Degraded"}
-            </span>
-          </div>
-        </Card>
       </div>
 
       {role === roles.Reader && (
@@ -150,9 +124,7 @@ export function DashboardContent() {
         </Card>
       )}
 
-      {roles.hasAtLeast(role, roles.Admin) && (
-        <AuthorReviewQueue />
-      )}
+      {roles.hasAtLeast(role, roles.Admin) && <AuthorReviewQueue />}
 
       {role === roles.SuperAdmin && <SuperAdminPanel />}
 

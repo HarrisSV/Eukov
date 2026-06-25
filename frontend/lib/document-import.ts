@@ -1,3 +1,5 @@
+import { plainTextToStructuredHtml } from "@/lib/paste-html";
+
 export const IMPORT_ACCEPT =
   ".doc,.docx,.pdf,.txt,.md,.csv,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg," +
   "application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
@@ -101,7 +103,7 @@ export async function imageFileToHtml(file: File): Promise<string> {
 }
 
 export async function textFileToHtml(file: File): Promise<string> {
-  return bodyToHtml(await file.text());
+  return plainTextToStructuredHtml(await file.text());
 }
 
 export async function htmlFileToHtml(file: File): Promise<string> {

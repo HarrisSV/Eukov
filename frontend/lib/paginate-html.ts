@@ -1,4 +1,5 @@
 import { bodyToHtml, escapeHtml } from "@/lib/document-import";
+import { isHeadingBlock, plainTextToStructuredHtml } from "@/lib/paste-html";
 
 /** ~334 words ≈ three pages per 1000-word manuscript in page view. */
 export const WORDS_PER_PAGE = 334;
@@ -64,6 +65,10 @@ function splitHtmlIntoBlocks(html: string): string[] {
 }
 
 function splitBlockByWordLimit(blockHtml: string, maxWords: number): string[] {
+  if (isHeadingBlock(blockHtml)) {
+    return [blockHtml];
+  }
+
   const words = extractWords(blockHtml);
   if (words.length <= maxWords) {
     return [blockHtml];
@@ -101,10 +106,29 @@ export function ensurePaginatedHtml(
   html: string,
   wordsPerPage: number = WORDS_PER_PAGE,
 ): string {
-  if (!needsPagination(html, wordsPerPage)) {
-    return html;
+  const wrapped = ensurePageSheetHtml(html);
+  if (!needsPagination(wrapped, wordsPerPage)) {
+    return wrapped;
   }
-  return paginateHtml(html, wordsPerPage);
+  return paginateHtml(wrapped, wordsPerPage);
+}
+
+/** Wrap bare editor HTML in a single page sheet when missing. */
+export function ensurePageSheetHtml(html: string): string {
+  const trimmed = html.trim();
+  if (!trimmed) {
+    return `${PAGE_SHEET_OPEN}<p></p>${PAGE_SHEET_CLOSE}`;
+  }
+  if (/data-type="page-sheet"/.test(trimmed)) {
+    return trimmed;
+  }
+  if (/class="draft-page-sheet"/.test(trimmed)) {
+    return trimmed.replace(
+      /<div([^>]*class="draft-page-sheet"[^>]*)>/i,
+      '<div$1 data-type="page-sheet">',
+    );
+  }
+  return `${PAGE_SHEET_OPEN}${trimmed}${PAGE_SHEET_CLOSE}`;
 }
 
 /**
@@ -152,7 +176,7 @@ export function paginateHtml(
 }
 
 export function plainTextToPaginatedHtml(text: string): string {
-  return paginateHtml(bodyToHtml(text));
+  return paginateHtml(plainTextToStructuredHtml(text));
 }
 
 export function mergeAndPaginateHtml(currentHtml: string, insertedHtml: string): string {

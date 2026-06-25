@@ -9,7 +9,10 @@ export const PageSheet = Node.create({
   isolating: true,
 
   parseHTML() {
-    return [{ tag: 'div[data-type="page-sheet"]' }];
+    return [
+      { tag: 'div[data-type="page-sheet"]' },
+      { tag: "div.draft-page-sheet" },
+    ];
   },
 
   renderHTML({ HTMLAttributes }) {

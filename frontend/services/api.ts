@@ -396,8 +396,32 @@ export const api = {
   },
 
   getRecommendedLibrary: (limit = 8) =>
-    request<{ books: RecommendedBook[] }>(
+    request<{ books: RecommendedBook[]; aiEnabled?: boolean }>(
       `/library/recommended?limit=${limit}`,
+      {},
+      true,
+    ),
+
+  aiProofread: (text: string) =>
+    request<{ result: ProofreadResult }>(
+      "/ai/proofread",
+      {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      },
+      true,
+    ),
+
+  getDocumentAISummary: (documentId: string) =>
+    request<{ summary: BookSummaryResult }>(
+      `/documents/${documentId}/ai-summary`,
+      {},
+      true,
+    ),
+
+  getDocumentAIFullSummary: (documentId: string) =>
+    request<{ summary: BookSummaryResult }>(
+      `/documents/${documentId}/ai-full-summary`,
       {},
       true,
     ),
@@ -456,17 +480,17 @@ export const api = {
   getDocument: (id: string) =>
     request<{ document: DocumentDetail }>(`/documents/${id}`, {}, true),
 
-  createDocument: (title: string, content: string) =>
+  createDocument: (payload: SaveDocumentPayload) =>
     request<{ document: DocumentDetail }>(
       "/documents",
-      { method: "POST", body: JSON.stringify({ title, content }) },
+      { method: "POST", body: JSON.stringify(payload) },
       true,
     ),
 
-  updateDocument: (id: string, title: string, content: string) =>
+  updateDocument: (id: string, payload: SaveDocumentPayload) =>
     request<{ document: DocumentDetail }>(
       `/documents/${id}`,
-      { method: "PUT", body: JSON.stringify({ title, content }) },
+      { method: "PUT", body: JSON.stringify(payload) },
       true,
     ),
 
@@ -479,7 +503,16 @@ export const api = {
 
   publishDocument: (
     id: string,
-    payload: { genre: string; tags: string[]; title?: string; content?: string },
+    payload: {
+      genre: string;
+      tags: string[];
+      title?: string;
+      content?: string;
+      contentFormat?: "docx" | "html";
+      readerHtml?: string;
+      coverUrl?: string;
+      authorName?: string;
+    },
   ) =>
     request<{ document: DocumentDetail }>(
       `/documents/${id}/publish`,
@@ -491,6 +524,13 @@ export const api = {
     request<{ success: boolean }>(
       `/documents/${id}/unpublish-request`,
       { method: "POST", body: JSON.stringify({ justification }) },
+      true,
+    ),
+
+  takedownPublishedScript: (documentId: string) =>
+    request<{ document: DocumentDetail }>(
+      `/documents/${documentId}/takedown`,
+      { method: "POST" },
       true,
     ),
 
@@ -547,10 +587,34 @@ export interface DocketWorkspaceResponse {
 export interface AuthorActivitySummary {
   userId: string;
   email: string;
+  displayName?: string;
+  nickname?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
   role: string;
   draftCount: number;
   publishedCount: number;
   recentEvents: { id: string; eventType: string; documentId?: string; createdAt: string }[];
+}
+
+export function formatAuthorActivityLabel(
+  author: Pick<
+    AuthorActivitySummary,
+    "displayName" | "nickname" | "firstName" | "middleName" | "lastName" | "email"
+  >,
+): string {
+  if (author.displayName?.trim()) {
+    return author.displayName.trim();
+  }
+  if (author.nickname?.trim()) {
+    return author.nickname.trim();
+  }
+  const fullName = formatUserFullName(author);
+  if (fullName) {
+    return fullName;
+  }
+  return "Unknown author";
 }
 
 export interface LibraryQueryParams {
@@ -565,9 +629,11 @@ export interface LibraryBook {
   title: string;
   authorId: string;
   authorEmail: string;
+  authorName?: string;
   genreId?: string;
   genreName?: string;
   summary?: string;
+  coverUrl?: string;
   tags: string[];
   openCount: number;
   publishedAt?: string;
@@ -575,6 +641,22 @@ export interface LibraryBook {
 
 export interface RecommendedBook extends LibraryBook {
   score: number;
+  reason?: string;
+}
+
+export interface ProofreadResult {
+  correctedText: string;
+  correctedHtml: string;
+  usedAi: boolean;
+}
+
+export interface BookSummaryResult {
+  documentId: string;
+  title: string;
+  summary: string;
+  usedAi: boolean;
+  wordCount?: number;
+  imageCount?: number;
 }
 
 export interface BookPreview {
@@ -627,7 +709,15 @@ export interface DocumentSummary {
 
 export interface DocumentDetail extends DocumentSummary {
   content?: string;
+  contentFormat?: "docx" | "html";
 }
+
+export type SaveDocumentPayload = {
+  title: string;
+  content: string;
+  contentFormat?: "docx" | "html";
+  readerHtml?: string;
+};
 
 export interface UnpublishRequestItem {
   id: string;

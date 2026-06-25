@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/eukov/backend/internal/ai"
 	"github.com/eukov/backend/internal/api"
 	"github.com/eukov/backend/internal/auth"
 	"github.com/eukov/backend/internal/middleware"
@@ -65,11 +66,14 @@ func setupIntegrationRouter(t *testing.T) *gin.Engine {
 	prefRepo := repository.NewPreferenceRepository(db)
 	accessKeyRepo := repository.NewAccessKeyRepository(db)
 	authorAppRepo := repository.NewAuthorApplicationRepository(db)
+	attachmentRepo := repository.NewApplicationAttachmentRepository(db)
+	inboxRepo := repository.NewInboxRepository(db)
 	auditRepo := repository.NewAuditLogRepository(db)
 	refreshRepo := repository.NewRefreshTokenRepository(db)
 
 	jwtSvc := auth.NewJWTService("test-secret-key-32chars-minimum!", 15, 7)
 	auditSvc := service.NewAuditService(auditRepo)
+	inboxSvc := service.NewInboxService(inboxRepo, userRepo)
 	fileSvc := service.NewDocumentFileService(t.TempDir())
 	metadataRepo := repository.NewDocumentMetadataRepository(db)
 	docketItemRepo := repository.NewDocketItemRepository(db)
@@ -85,6 +89,7 @@ func setupIntegrationRouter(t *testing.T) *gin.Engine {
 		repository.NewUnpublishRepository(db),
 		publishAuditRepo,
 		auditSvc,
+		nil,
 	)
 	docketSvc := service.NewDocketService(docketItemRepo, documentRepo, tagRepo, genreRepo, metadataRepo)
 	adminActivitySvc := service.NewAdminActivityService(userRepo, documentRepo, publishAuditRepo, repository.NewUnpublishRepository(db))
@@ -93,20 +98,25 @@ func setupIntegrationRouter(t *testing.T) *gin.Engine {
 	readingProgressRepo := repository.NewReadingProgressRepository(db)
 	readerActivityRepo := repository.NewReaderActivityRepository(db)
 	librarySvc := service.NewLibraryService(documentRepo, tagRepo, genreRepo)
-	recommendationSvc := service.NewRecommendationService(documentRepo, tagRepo, readerActivityRepo, prefRepo)
+	qwenClient := ai.NewQwenClientFromEnv()
+	aiSvc := service.NewAIService(qwenClient, documentRepo, fileSvc)
+	recommendationSvc := service.NewRecommendationService(documentRepo, tagRepo, readerActivityRepo, prefRepo, readingProgressRepo, aiSvc)
 	issuanceSvc := service.NewIssuanceService(issuedBookRepo, documentRepo, authorSubRepo, userRepo, readerActivityRepo, docketItemRepo, readingProgressRepo)
 	subscriptionSvc := service.NewSubscriptionService(authorSubRepo, userRepo, docketItemRepo, auditSvc, issuanceSvc)
 	progressSvc := service.NewProgressService(readingProgressRepo, issuanceSvc, readerActivityRepo, fileSvc, documentRepo)
-	readingSvc := service.NewReadingService(documentRepo, fileSvc, issuanceSvc, readingProgressRepo)
+	readingSvc := service.NewReadingService(documentRepo, tagRepo, fileSvc, issuanceSvc, readingProgressRepo)
+	accessKeySvc := service.NewAccessKeyService(accessKeyRepo, userRepo, authorAppRepo, auditSvc, inboxSvc)
+	authorAppSvc := service.NewAuthorApplicationService(authorAppRepo, attachmentRepo, userRepo, auditSvc, inboxSvc, accessKeySvc)
 	h := api.NewHandler(
 		service.NewUserService(userRepo),
 		service.NewGenreService(genreRepo),
 		service.NewPreferenceService(userRepo, genreRepo, prefRepo),
 		service.NewStorageService(t.TempDir()),
 		service.NewAuthSessionService(userRepo, refreshRepo, jwtSvc),
-		service.NewAccessKeyService(accessKeyRepo, userRepo, auditSvc),
-		service.NewAuthorApplicationService(authorAppRepo, userRepo, auditSvc),
+		accessKeySvc,
+		authorAppSvc,
 		auditSvc,
+		inboxSvc,
 		documentSvc,
 		docketSvc,
 		adminActivitySvc,
@@ -116,6 +126,7 @@ func setupIntegrationRouter(t *testing.T) *gin.Engine {
 		issuanceSvc,
 		progressSvc,
 		readingSvc,
+		aiSvc,
 	)
 
 	r := gin.New()

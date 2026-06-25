@@ -19,6 +19,8 @@ import (
 const (
 	DocumentStatusDraft     = "DRAFT"
 	DocumentStatusPublished = "PUBLISHED"
+	ContentFormatHTML       = "html"
+	ContentFormatDocx       = "docx"
 	minPublishContentLength = 200
 )
 
@@ -41,6 +43,7 @@ type DocumentService struct {
 	unpublish   *repository.UnpublishRepository
 	auditEv     *repository.PublishAuditEventRepository
 	audit       *AuditService
+	inbox       *InboxService
 }
 
 func NewDocumentService(
@@ -54,6 +57,7 @@ func NewDocumentService(
 	unpublish *repository.UnpublishRepository,
 	auditEv *repository.PublishAuditEventRepository,
 	audit *AuditService,
+	inbox *InboxService,
 ) *DocumentService {
 	return &DocumentService{
 		dockets:     dockets,
@@ -66,6 +70,7 @@ func NewDocumentService(
 		unpublish:   unpublish,
 		auditEv:     auditEv,
 		audit:       audit,
+		inbox:       inbox,
 	}
 }
 
@@ -76,27 +81,39 @@ type DocumentView struct {
 	GenreID     *uuid.UUID `json:"genreId,omitempty"`
 	GenreName   string     `json:"genreName,omitempty"`
 	Tags        []string   `json:"tags"`
-	Content     string     `json:"content,omitempty"`
+	Content        string     `json:"content,omitempty"`
+	ContentFormat  string     `json:"contentFormat,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
 	PublishedAt *time.Time `json:"publishedAt,omitempty"`
 }
 
 type CreateDocumentInput struct {
-	Title   string `validate:"required,min=1,max=255"`
-	Content string
+	Title         string `validate:"required,min=1,max=255"`
+	Content       string
+	ContentFormat string
+	ReaderHtml    string
+	CoverURL      string
 }
 
 type UpdateDocumentInput struct {
-	Title   string `validate:"required,min=1,max=255"`
-	Content string
+	Title         string `validate:"required,min=1,max=255"`
+	Content       string
+	ContentFormat string
+	ReaderHtml    string
+	CoverURL      string
+	AuthorName    string
 }
 
 type PublishDocumentInput struct {
-	Genre   string   `validate:"required"`
-	Tags    []string `validate:"required,min=1,dive,required,max=50"`
-	Title   string   `validate:"omitempty,min=1,max=255"`
-	Content string
+	Genre         string   `validate:"required"`
+	Tags          []string `validate:"required,min=1,dive,required,max=50"`
+	Title         string   `validate:"omitempty,min=1,max=255"`
+	Content       string
+	ContentFormat string
+	ReaderHtml    string
+	CoverURL      string
+	AuthorName    string
 }
 
 func (s *DocumentService) CreateDraft(ctx context.Context, authorID uuid.UUID, input CreateDocumentInput) (*DocumentView, error) {
@@ -124,7 +141,7 @@ func (s *DocumentService) CreateDraft(ctx context.Context, authorID uuid.UUID, i
 	if err := s.documents.Create(ctx, doc); err != nil {
 		return nil, err
 	}
-	if err := s.files.WriteContent(authorID, doc.ID, input.Content); err != nil {
+	if err := s.writeDraftContent(authorID, doc.ID, input.Content, input.ContentFormat, input.ReaderHtml); err != nil {
 		return nil, err
 	}
 	_ = s.docketItems.Upsert(ctx, &models.DocketItem{
@@ -132,7 +149,7 @@ func (s *DocumentService) CreateDraft(ctx context.Context, authorID uuid.UUID, i
 	})
 
 	_ = s.recordEvent(ctx, authorID, doc.ID, "DOCUMENT_CREATED", nil)
-	return s.toView(ctx, doc, authorID, input.Content, true)
+	return s.toView(ctx, doc, authorID, true, true)
 }
 
 func (s *DocumentService) UpdateDraft(ctx context.Context, authorID, documentID uuid.UUID, input UpdateDocumentInput) (*DocumentView, error) {
@@ -146,12 +163,42 @@ func (s *DocumentService) UpdateDraft(ctx context.Context, authorID, documentID 
 	if err := s.documents.Update(ctx, doc); err != nil {
 		return nil, err
 	}
-	if err := s.files.WriteContent(authorID, doc.ID, input.Content); err != nil {
+	if err := s.writeDraftContent(authorID, doc.ID, input.Content, input.ContentFormat, input.ReaderHtml); err != nil {
 		return nil, err
 	}
 
 	_ = s.recordEvent(ctx, authorID, doc.ID, "DOCUMENT_SAVED", nil)
-	return s.toView(ctx, doc, authorID, input.Content, true)
+	return s.toView(ctx, doc, authorID, true, true)
+}
+
+// PersistAuthorContent stores editor content for drafts or published books owned by the author.
+// Published documents keep their status; only on-disk content (e.g. docx sidecar) is updated.
+func (s *DocumentService) PersistAuthorContent(ctx context.Context, authorID, documentID uuid.UUID, input UpdateDocumentInput) (*DocumentView, error) {
+	doc, err := s.authorOwnedDocument(ctx, authorID, documentID)
+	if err != nil {
+		return nil, err
+	}
+
+	if doc.Status == DocumentStatusDraft {
+		doc.Title = strings.TrimSpace(input.Title)
+		doc.UpdatedAt = time.Now()
+		if err := s.documents.Update(ctx, doc); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := s.writeDraftContent(authorID, doc.ID, input.Content, input.ContentFormat, input.ReaderHtml); err != nil {
+		return nil, err
+	}
+
+	if doc.Status == DocumentStatusDraft {
+		_ = s.recordEvent(ctx, authorID, doc.ID, "DOCUMENT_SAVED", nil)
+	}
+	return s.toView(ctx, doc, authorID, true, true)
+}
+
+func (s *DocumentService) FindOwnedDocument(ctx context.Context, authorID, documentID uuid.UUID) (*models.Document, error) {
+	return s.authorOwnedDocument(ctx, authorID, documentID)
 }
 
 func (s *DocumentService) DeleteDraft(ctx context.Context, authorID, documentID uuid.UUID) error {
@@ -173,14 +220,11 @@ func (s *DocumentService) Publish(ctx context.Context, authorID, documentID uuid
 		return nil, err
 	}
 
-	content := input.Content
-	if content == "" {
-		content, err = s.files.ReadContent(authorID, doc.ID)
-		if err != nil {
-			return nil, err
-		}
+	readerHTML, docxBytes, err := s.resolvePublishContent(authorID, doc.ID, input)
+	if err != nil {
+		return nil, err
 	}
-	plain := StripHTML(content)
+	plain := StripHTML(readerHTML)
 	if utf8.RuneCountInString(strings.TrimSpace(plain)) < minPublishContentLength {
 		return nil, fmt.Errorf("%w: content must be at least %d characters", ErrPublishValidation, minPublishContentLength)
 	}
@@ -204,7 +248,12 @@ func (s *DocumentService) Publish(ctx context.Context, authorID, documentID uuid
 		return nil, fmt.Errorf("%w: title required", ErrPublishValidation)
 	}
 
-	if err := s.files.WriteContent(authorID, doc.ID, content); err != nil {
+	if len(docxBytes) > 0 {
+		if err := s.files.WriteDocx(authorID, doc.ID, docxBytes); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.files.WriteReaderHTML(authorID, doc.ID, readerHTML); err != nil {
 		return nil, err
 	}
 
@@ -223,8 +272,10 @@ func (s *DocumentService) Publish(ctx context.Context, authorID, documentID uuid
 	_ = s.metadata.Upsert(ctx, &models.DocumentMetadata{
 		DocumentID:  doc.ID,
 		GenreID:     genre.ID,
-		Summary:     truncateSummary(content, 280),
-		ReadingTime: estimateReadingMinutes(content),
+		Summary:     truncateSummary(plain, 280),
+		ReadingTime: estimateReadingMinutes(readerHTML),
+		CoverURL:    strings.TrimSpace(input.CoverURL),
+		AuthorName:  strings.TrimSpace(input.AuthorName),
 	})
 
 	_ = s.recordEvent(ctx, authorID, doc.ID, "DOCUMENT_PUBLISHED", map[string]any{
@@ -236,7 +287,7 @@ func (s *DocumentService) Publish(ctx context.Context, authorID, documentID uuid
 		"title": title,
 	})
 
-	return s.toView(ctx, doc, authorID, content, true)
+	return s.toView(ctx, doc, authorID, true, true)
 }
 
 func (s *DocumentService) GetDocument(ctx context.Context, requesterID uuid.UUID, requesterRole string, documentID uuid.UUID) (*DocumentView, error) {
@@ -265,15 +316,92 @@ func (s *DocumentService) GetDocument(ctx context.Context, requesterID uuid.UUID
 		return nil, ErrDocumentForbidden
 	}
 
-	content := ""
-	if includeContent {
-		content, err = s.files.ReadContent(authorID, doc.ID)
-		if err != nil {
-			return nil, err
-		}
+	return s.toView(ctx, doc, authorID, includeContent, authorID == requesterID)
+}
+
+func (s *DocumentService) writeDraftContent(
+	authorID, documentID uuid.UUID,
+	content, contentFormat, readerHTML string,
+) error {
+	format := strings.TrimSpace(strings.ToLower(contentFormat))
+	if format == "" {
+		format = ContentFormatHTML
 	}
 
-	return s.toView(ctx, doc, authorID, content, includeContent)
+	switch format {
+	case ContentFormatDocx:
+		docxBytes, err := DecodeDocxBase64(content)
+		if err != nil {
+			return err
+		}
+		if len(docxBytes) == 0 {
+			return nil
+		}
+		if err := s.files.WriteDocx(authorID, documentID, docxBytes); err != nil {
+			return err
+		}
+		if strings.TrimSpace(readerHTML) != "" {
+			return s.files.WriteReaderHTML(authorID, documentID, readerHTML)
+		}
+		return nil
+	default:
+		return s.files.WriteContent(authorID, documentID, content)
+	}
+}
+
+func (s *DocumentService) resolvePublishContent(
+	authorID, documentID uuid.UUID,
+	input PublishDocumentInput,
+) (readerHTML string, docxBytes []byte, err error) {
+	format := strings.TrimSpace(strings.ToLower(input.ContentFormat))
+	if format == "" {
+		format = ContentFormatHTML
+	}
+
+	switch format {
+	case ContentFormatDocx:
+		docxBytes, err = DecodeDocxBase64(input.Content)
+		if err != nil {
+			return "", nil, err
+		}
+		if len(docxBytes) == 0 {
+			docxBytes, err = s.files.ReadDocx(authorID, documentID)
+			if err != nil {
+				return "", nil, err
+			}
+		}
+		readerHTML = strings.TrimSpace(input.ReaderHtml)
+		if readerHTML == "" {
+			readerHTML, err = s.files.ReadReaderHTML(authorID, documentID)
+			if err != nil {
+				return "", nil, err
+			}
+		}
+		if readerHTML == "" {
+			return "", nil, fmt.Errorf("%w: readerHtml required for docx publish", ErrPublishValidation)
+		}
+		return readerHTML, docxBytes, nil
+	default:
+		readerHTML = strings.TrimSpace(input.Content)
+		if readerHTML == "" {
+			readerHTML, err = s.files.ReadContent(authorID, documentID)
+			if err != nil {
+				return "", nil, err
+			}
+		}
+		return readerHTML, nil, nil
+	}
+}
+
+func (s *DocumentService) loadDocumentContent(
+	authorID, documentID uuid.UUID,
+	requesterIsAuthor bool,
+) (content, format string, err error) {
+	if requesterIsAuthor {
+		return s.files.ReadAuthorDraft(authorID, documentID)
+	}
+	html, err := s.files.ReadContent(authorID, documentID)
+	return html, ContentFormatHTML, err
 }
 
 func (s *DocumentService) ReviewDraftContent(ctx context.Context, reviewerID uuid.UUID, documentID uuid.UUID) (*DocumentView, error) {
@@ -285,15 +413,11 @@ func (s *DocumentService) ReviewDraftContent(ctx context.Context, reviewerID uui
 		return nil, ErrDocumentNotDraft
 	}
 	authorID := doc.AuthorID
-	content, err := s.files.ReadContent(authorID, doc.ID)
-	if err != nil {
-		return nil, err
-	}
 	_ = s.recordEvent(ctx, reviewerID, doc.ID, "ADMIN_REVIEWED_DRAFT", map[string]any{
 		"reviewerId": reviewerID,
 	})
 	_ = s.audit.Record(ctx, &reviewerID, "ADMIN_REVIEWED_DRAFT", "document", &doc.ID, nil)
-	return s.toView(ctx, doc, authorID, content, true)
+	return s.toView(ctx, doc, authorID, true, true)
 }
 
 func (s *DocumentService) ListDocuments(ctx context.Context, requesterID uuid.UUID, requesterRole string, mineOnly bool) ([]DocumentView, error) {
@@ -315,7 +439,7 @@ func (s *DocumentService) ListDocuments(ctx context.Context, requesterID uuid.UU
 		if err != nil {
 			continue
 		}
-		view, err := s.toView(ctx, &doc, authorID, "", false)
+		view, err := s.toView(ctx, &doc, authorID, false, false)
 		if err != nil {
 			continue
 		}
@@ -353,6 +477,40 @@ func (s *DocumentService) SubmitUnpublishRequest(ctx context.Context, authorID, 
 		"requestId": req.ID,
 	})
 	return nil
+}
+
+func (s *DocumentService) TakedownPublished(ctx context.Context, authorID, documentID uuid.UUID) (*DocumentView, error) {
+	doc, err := s.documents.FindByID(ctx, documentID)
+	if err != nil {
+		return nil, err
+	}
+	ownerID, err := s.documents.AuthorIDForDocument(ctx, documentID)
+	if err != nil {
+		return nil, err
+	}
+	if ownerID != authorID {
+		return nil, ErrDocumentForbidden
+	}
+	if doc.Status != DocumentStatusPublished {
+		return nil, ErrDocumentNotPublished
+	}
+
+	now := time.Now()
+	doc.Status = DocumentStatusDraft
+	doc.PublishedAt = nil
+	doc.UpdatedAt = now
+	if err := s.documents.Update(ctx, doc); err != nil {
+		return nil, err
+	}
+
+	_ = s.recordEvent(ctx, authorID, doc.ID, "DOCUMENT_TAKEDOWN", nil)
+	_ = s.audit.Record(ctx, &authorID, "DOCUMENT_TAKEDOWN", "document", &doc.ID, map[string]any{
+		"title": doc.Title,
+	})
+	if s.inbox != nil {
+		_ = s.inbox.NotifyScriptTakedown(ctx, authorID, doc.ID, doc.Title)
+	}
+	return s.toView(ctx, doc, authorID, true, true)
 }
 
 func (s *DocumentService) ListUnpublishRequests(ctx context.Context, status string) ([]models.UnpublishRequest, error) {
@@ -413,6 +571,24 @@ func (s *DocumentService) reviewUnpublish(ctx context.Context, adminID, requestI
 	return nil
 }
 
+func (s *DocumentService) authorOwnedDocument(ctx context.Context, authorID, documentID uuid.UUID) (*models.Document, error) {
+	doc, err := s.documents.FindByID(ctx, documentID)
+	if err != nil {
+		return nil, err
+	}
+	ownerID, err := s.documents.AuthorIDForDocument(ctx, documentID)
+	if err != nil {
+		return nil, err
+	}
+	if ownerID != authorID {
+		return nil, ErrDocumentForbidden
+	}
+	if doc.Status != DocumentStatusDraft && doc.Status != DocumentStatusPublished {
+		return nil, ErrDocumentNotDraft
+	}
+	return doc, nil
+}
+
 func (s *DocumentService) authorDraft(ctx context.Context, authorID, documentID uuid.UUID) (*models.Document, error) {
 	doc, err := s.documents.FindByID(ctx, documentID)
 	if err != nil {
@@ -431,10 +607,18 @@ func (s *DocumentService) authorDraft(ctx context.Context, authorID, documentID 
 	return doc, nil
 }
 
-func (s *DocumentService) toView(ctx context.Context, doc *models.Document, authorID uuid.UUID, content string, loadContent bool) (*DocumentView, error) {
-	if loadContent && content == "" {
+func (s *DocumentService) toView(
+	ctx context.Context,
+	doc *models.Document,
+	authorID uuid.UUID,
+	loadContent bool,
+	requesterIsAuthor bool,
+) (*DocumentView, error) {
+	content := ""
+	contentFormat := ""
+	if loadContent {
 		var err error
-		content, err = s.files.ReadContent(authorID, doc.ID)
+		content, contentFormat, err = s.loadDocumentContent(authorID, doc.ID, requesterIsAuthor)
 		if err != nil {
 			return nil, err
 		}
@@ -442,15 +626,16 @@ func (s *DocumentService) toView(ctx context.Context, doc *models.Document, auth
 
 	tags, _ := s.tags.ListByDocument(ctx, doc.ID)
 	view := &DocumentView{
-		ID:          doc.ID,
-		Title:       doc.Title,
-		Status:      doc.Status,
-		GenreID:     doc.GenreID,
-		Tags:        tags,
-		Content:     content,
-		CreatedAt:   doc.CreatedAt,
-		UpdatedAt:   doc.UpdatedAt,
-		PublishedAt: doc.PublishedAt,
+		ID:            doc.ID,
+		Title:         doc.Title,
+		Status:        doc.Status,
+		GenreID:       doc.GenreID,
+		Tags:          tags,
+		Content:       content,
+		ContentFormat: contentFormat,
+		CreatedAt:     doc.CreatedAt,
+		UpdatedAt:     doc.UpdatedAt,
+		PublishedAt:   doc.PublishedAt,
 	}
 	if doc.GenreID != nil {
 		if genre, err := s.genres.FindByID(ctx, *doc.GenreID); err == nil {

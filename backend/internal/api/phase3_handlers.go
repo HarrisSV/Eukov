@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/eukov/backend/internal/middleware"
 	"github.com/eukov/backend/internal/repository"
@@ -20,8 +21,10 @@ func (h *Handler) CreateDocument(c *gin.Context) {
 	}
 
 	var req struct {
-		Title   string `json:"title" validate:"required,min=1,max=255"`
-		Content string `json:"content"`
+		Title         string `json:"title" validate:"required,min=1,max=255"`
+		Content       string `json:"content"`
+		ContentFormat string `json:"contentFormat"`
+		ReaderHtml    string `json:"readerHtml"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
@@ -33,8 +36,10 @@ func (h *Handler) CreateDocument(c *gin.Context) {
 	}
 
 	doc, err := h.documents.CreateDraft(c.Request.Context(), user.ID, service.CreateDocumentInput{
-		Title:   req.Title,
-		Content: req.Content,
+		Title:         req.Title,
+		Content:       req.Content,
+		ContentFormat: req.ContentFormat,
+		ReaderHtml:    req.ReaderHtml,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create document"})
@@ -57,8 +62,10 @@ func (h *Handler) UpdateDocument(c *gin.Context) {
 	}
 
 	var req struct {
-		Title   string `json:"title" validate:"required,min=1,max=255"`
-		Content string `json:"content"`
+		Title         string `json:"title" validate:"required,min=1,max=255"`
+		Content       string `json:"content"`
+		ContentFormat string `json:"contentFormat"`
+		ReaderHtml    string `json:"readerHtml"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
@@ -69,10 +76,33 @@ func (h *Handler) UpdateDocument(c *gin.Context) {
 		return
 	}
 
-	doc, err := h.documents.UpdateDraft(c.Request.Context(), user.ID, documentID, service.UpdateDocumentInput{
-		Title:   req.Title,
-		Content: req.Content,
-	})
+	input := service.UpdateDocumentInput{
+		Title:         req.Title,
+		Content:       req.Content,
+		ContentFormat: req.ContentFormat,
+		ReaderHtml:    req.ReaderHtml,
+	}
+
+	existing, err := h.documents.FindOwnedDocument(c.Request.Context(), user.ID, documentID)
+	if err != nil {
+		if errors.Is(err, service.ErrDocumentForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+		if errors.Is(err, repository.ErrDocumentNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "document not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load document"})
+		return
+	}
+
+	var doc *service.DocumentView
+	if existing.Status == service.DocumentStatusPublished {
+		doc, err = h.documents.PersistAuthorContent(c.Request.Context(), user.ID, documentID, input)
+	} else {
+		doc, err = h.documents.UpdateDraft(c.Request.Context(), user.ID, documentID, input)
+	}
 	if err != nil {
 		if errors.Is(err, service.ErrDocumentForbidden) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
@@ -138,10 +168,14 @@ func (h *Handler) PublishDocument(c *gin.Context) {
 	}
 
 	var req struct {
-		Genre   string   `json:"genre" validate:"required"`
-		Tags    []string `json:"tags" validate:"required,min=1,dive,required"`
-		Title   string   `json:"title"`
-		Content string   `json:"content"`
+		Genre         string   `json:"genre" validate:"required"`
+		Tags          []string `json:"tags" validate:"required,min=1,dive,required"`
+		Title         string   `json:"title"`
+		Content       string   `json:"content"`
+		ContentFormat string   `json:"contentFormat"`
+		ReaderHtml    string   `json:"readerHtml"`
+		CoverURL      string   `json:"coverUrl"`
+		AuthorName    string   `json:"authorName"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
@@ -152,11 +186,23 @@ func (h *Handler) PublishDocument(c *gin.Context) {
 		return
 	}
 
+	authorName := strings.TrimSpace(req.AuthorName)
+	if authorName == "" {
+		authorName = strings.TrimSpace(strings.Join([]string{user.FirstName, user.MiddleName, user.LastName}, " "))
+	}
+	if authorName == "" {
+		authorName = user.Email
+	}
+
 	doc, err := h.documents.Publish(c.Request.Context(), user.ID, documentID, service.PublishDocumentInput{
-		Genre:   req.Genre,
-		Tags:    req.Tags,
-		Title:   req.Title,
-		Content: req.Content,
+		Genre:         req.Genre,
+		Tags:          req.Tags,
+		Title:         req.Title,
+		Content:       req.Content,
+		ContentFormat: req.ContentFormat,
+		ReaderHtml:    req.ReaderHtml,
+		CoverURL:      req.CoverURL,
+		AuthorName:    authorName,
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrPublishValidation) {
@@ -271,6 +317,39 @@ func (h *Handler) SubmitUnpublishRequest(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"success": true})
+}
+
+func (h *Handler) TakedownPublishedDocument(c *gin.Context) {
+	user, ok := middleware.GetAuthUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	documentID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid document id"})
+		return
+	}
+
+	doc, err := h.documents.TakedownPublished(c.Request.Context(), user.ID, documentID)
+	if err != nil {
+		if errors.Is(err, service.ErrDocumentForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "you can only takedown your own published scripts"})
+			return
+		}
+		if errors.Is(err, service.ErrDocumentNotPublished) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "document is not published"})
+			return
+		}
+		if errors.Is(err, repository.ErrDocumentNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "document not found"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"document": doc})
 }
 
 func (h *Handler) ListUnpublishRequests(c *gin.Context) {

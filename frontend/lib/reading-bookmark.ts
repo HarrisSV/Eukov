@@ -49,6 +49,29 @@ export function clearReadingBookmark(documentId: string): void {
   localStorage.removeItem(bookmarkKey(documentId));
 }
 
+/** Page to open when resuming: explicit URL page wins, then saved bookmark, then fallback. */
+export function resolveReadingResumePage(
+  documentId: string,
+  pageFromUrl?: number | null,
+  fallback = 1,
+): number {
+  if (typeof pageFromUrl === "number" && Number.isFinite(pageFromUrl) && pageFromUrl > 0) {
+    return Math.floor(pageFromUrl);
+  }
+
+  const bookmark = readReadingBookmark(documentId);
+  if (bookmark?.page && bookmark.page > 0) {
+    return bookmark.page;
+  }
+
+  return Math.max(1, fallback);
+}
+
+export function isViewBookmarked(documentId: string, leftPage: number): boolean {
+  const bookmark = readReadingBookmark(documentId);
+  return bookmark?.documentId === documentId && bookmark.page === leftPage;
+}
+
 export function selectionOffsetIn(container: HTMLElement): number | undefined {
   if (typeof window === "undefined") {
     return undefined;

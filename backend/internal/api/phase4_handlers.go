@@ -151,7 +151,7 @@ func (h *Handler) GetRecommendedLibrary(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load recommendations"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"books": books})
+	c.JSON(http.StatusOK, gin.H{"books": books, "aiEnabled": h.ai != nil && h.ai.Enabled()})
 }
 
 func (h *Handler) GetDocumentPreview(c *gin.Context) {

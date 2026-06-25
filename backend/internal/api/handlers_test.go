@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/eukov/backend/internal/auth"
+	"github.com/eukov/backend/internal/ai"
 	"github.com/eukov/backend/internal/models"
 	"github.com/eukov/backend/internal/repository"
 	"github.com/eukov/backend/internal/service"
@@ -84,6 +85,7 @@ func setupRouterFromDB(t *testing.T, db *gorm.DB) *gin.Engine {
 		userSvc, genreSvc, prefSvc, storageSvc, sessionSvc, accessKeySvc, authorAppSvc, auditSvc, inboxSvc,
 		documentSvc, docketSvc, adminActivitySvc,
 		phase4.library, phase4.recommendations, phase4.subscriptions, phase4.issuance, phase4.progress, phase4.reading,
+		phase4.ai,
 	)
 	r := gin.New()
 	authLimiter := middleware.NewRateLimiter(1000, time.Minute)
@@ -103,6 +105,7 @@ func newTestDocumentService(t *testing.T, db *gorm.DB, auditSvc *service.AuditSe
 		repository.NewUnpublishRepository(db),
 		repository.NewPublishAuditEventRepository(db),
 		auditSvc,
+		nil,
 	)
 }
 
@@ -132,6 +135,7 @@ type testPhase4Services struct {
 	issuance        *service.IssuanceService
 	progress        *service.ProgressService
 	reading         *service.ReadingService
+	ai              *service.AIService
 }
 
 func newTestPhase4Services(t *testing.T, db *gorm.DB, auditSvc *service.AuditService) testPhase4Services {
@@ -149,11 +153,13 @@ func newTestPhase4Services(t *testing.T, db *gorm.DB, auditSvc *service.AuditSer
 	fileSvc := service.NewDocumentFileService(t.TempDir())
 
 	librarySvc := service.NewLibraryService(documentRepo, tagRepo, genreRepo)
-	recommendationSvc := service.NewRecommendationService(documentRepo, tagRepo, readerActivityRepo, prefRepo)
+	qwenClient := ai.NewQwenClientFromEnv()
+	aiSvc := service.NewAIService(qwenClient, documentRepo, fileSvc)
+	recommendationSvc := service.NewRecommendationService(documentRepo, tagRepo, readerActivityRepo, prefRepo, readingProgressRepo, aiSvc)
 	issuanceSvc := service.NewIssuanceService(issuedBookRepo, documentRepo, authorSubRepo, userRepo, readerActivityRepo, docketItemRepo, readingProgressRepo)
 	subscriptionSvc := service.NewSubscriptionService(authorSubRepo, userRepo, docketItemRepo, auditSvc, issuanceSvc)
 	progressSvc := service.NewProgressService(readingProgressRepo, issuanceSvc, readerActivityRepo, fileSvc, documentRepo)
-	readingSvc := service.NewReadingService(documentRepo, fileSvc, issuanceSvc, readingProgressRepo)
+	readingSvc := service.NewReadingService(documentRepo, tagRepo, fileSvc, issuanceSvc, readingProgressRepo)
 
 	return testPhase4Services{
 		library:         librarySvc,
@@ -162,6 +168,7 @@ func newTestPhase4Services(t *testing.T, db *gorm.DB, auditSvc *service.AuditSer
 		issuance:        issuanceSvc,
 		progress:        progressSvc,
 		reading:         readingSvc,
+		ai:              aiSvc,
 	}
 }
 

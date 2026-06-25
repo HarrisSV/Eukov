@@ -33,6 +33,7 @@ type Handler struct {
 	issuance        *service.IssuanceService
 	progress        *service.ProgressService
 	reading         *service.ReadingService
+	ai              *service.AIService
 	validate        *validator.Validate
 }
 
@@ -55,6 +56,7 @@ func NewHandler(
 	issuance *service.IssuanceService,
 	progress *service.ProgressService,
 	reading *service.ReadingService,
+	ai *service.AIService,
 ) *Handler {
 	return &Handler{
 		users:           users,
@@ -75,6 +77,7 @@ func NewHandler(
 		issuance:        issuance,
 		progress:        progress,
 		reading:         reading,
+		ai:              ai,
 		validate:        validator.New(),
 	}
 }
@@ -109,6 +112,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, jwtSvc *auth.JWTService, authLim
 			reader.GET("/docket/books", h.GetDocketBooks)
 			reader.GET("/library", h.GetLibrary)
 			reader.GET("/library/recommended", h.GetRecommendedLibrary)
+			reader.GET("/documents/:id/ai-summary", h.GetDocumentAISummary)
+			reader.GET("/documents/:id/ai-full-summary", h.GetDocumentAIFullSummary)
 			reader.POST("/authors/:id/subscribe", h.SubscribeAuthor)
 			reader.DELETE("/authors/:id/unsubscribe", h.UnsubscribeAuthor)
 			reader.POST("/documents/:id/issue", h.IssueBook)
@@ -134,6 +139,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, jwtSvc *auth.JWTService, authLim
 			author.DELETE("/documents/:id", h.DeleteDocument)
 			author.POST("/documents/:id/publish", h.PublishDocument)
 			author.POST("/documents/:id/unpublish-request", h.SubmitUnpublishRequest)
+			author.POST("/documents/:id/takedown", h.TakedownPublishedDocument)
+			author.POST("/ai/proofread", h.ProofreadText)
 			author.GET("/documents", h.ListDocuments)
 
 			protected.GET("/documents/:id", h.GetDocument)

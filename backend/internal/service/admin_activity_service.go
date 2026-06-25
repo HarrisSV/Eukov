@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	"github.com/eukov/backend/internal/models"
 	"github.com/eukov/backend/internal/repository"
@@ -33,10 +34,31 @@ func NewAdminActivityService(
 type AuthorActivitySummary struct {
 	UserID         uuid.UUID `json:"userId"`
 	Email          string    `json:"email"`
+	DisplayName    string    `json:"displayName"`
+	Nickname       string    `json:"nickname,omitempty"`
+	FirstName      string    `json:"firstName,omitempty"`
+	MiddleName     string    `json:"middleName,omitempty"`
+	LastName       string    `json:"lastName,omitempty"`
 	Role           string    `json:"role"`
 	DraftCount     int64     `json:"draftCount"`
 	PublishedCount int64     `json:"publishedCount"`
 	RecentEvents   []PublishEventSummary `json:"recentEvents"`
+}
+
+func authorActivityDisplayName(user models.User) string {
+	if nickname := strings.TrimSpace(user.Nickname); nickname != "" {
+		return nickname
+	}
+	parts := make([]string, 0, 3)
+	for _, value := range []string{user.FirstName, user.MiddleName, user.LastName} {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, " ")
+	}
+	return "Unknown author"
 }
 
 type PublishEventSummary struct {
@@ -74,6 +96,11 @@ func (s *AdminActivityService) ListAuthorActivity(ctx context.Context) ([]Author
 		summaries = append(summaries, AuthorActivitySummary{
 			UserID:         author.ID,
 			Email:          author.Email,
+			DisplayName:    authorActivityDisplayName(author),
+			Nickname:       author.Nickname,
+			FirstName:      author.FirstName,
+			MiddleName:     author.MiddleName,
+			LastName:       author.LastName,
 			Role:           author.Role,
 			DraftCount:     drafts,
 			PublishedCount: published,

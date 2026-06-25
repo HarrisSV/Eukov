@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -12,6 +13,7 @@ import {
   type ComponentType,
 } from "react";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { PortalFooter } from "@/components/layout/PortalFooter";
 import {
   UserIcon,
   DocketIcon,
@@ -19,7 +21,6 @@ import {
   LibraryIcon,
   ReviewQueueIcon,
   SettingsIcon,
-  SuperAdminIcon,
 } from "@/components/layout/sidebar-nav-icons";
 import { api, formatUserNickname } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
@@ -191,11 +192,33 @@ function useSidebar() {
   return value;
 }
 
+function userInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return "?";
+  }
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+}
+
 export function TopNav() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const refreshToken = useAuthStore((state) => state.refreshToken);
   const clearSession = useAuthStore((state) => state.clearSession);
+
+  const inboxQuery = useQuery({
+    queryKey: ["inbox"],
+    queryFn: async () => (await api.getInbox()).messages,
+    enabled: Boolean(user?.id),
+    staleTime: 30_000,
+  });
+
+  const unreadCount =
+    inboxQuery.data?.filter((message) => !message.readAt).length ?? 0;
+  const displayName = user ? formatUserNickname(user) : "";
 
   const handleLogout = async () => {
     try {
@@ -211,31 +234,51 @@ export function TopNav() {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-4 md:px-6">
-      <div className="flex items-center gap-3">
-        <span className="text-xl font-bold tracking-tight text-foreground">
-          EUKOV
-        </span>
-        <span className="hidden text-sm text-muted sm:inline">
-          Access Layer
-        </span>
-      </div>
-      <div className="flex items-center gap-3">
-        {user && (
-          <span className="hidden text-sm text-muted md:inline">
-            {formatUserNickname(user)}
-          </span>
-        )}
-        <ThemeToggle />
-        {user && (
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            Logout
-          </button>
-        )}
+    <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-background px-4 md:px-8">
+      <Link href="/dashboard" className="min-w-0 shrink-0">
+        <p className="text-xl font-bold tracking-tight text-accent">EUKOV</p>
+        <p className="mt-0.5 text-xs text-muted">Management Portal</p>
+      </Link>
+
+      <div className="flex items-center gap-2 md:gap-3">
+        <ThemeToggle compact />
+        <Link
+          href="/dashboard/inbox"
+          aria-label={`Inbox${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
+          className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background text-muted transition-colors hover:bg-surface hover:text-foreground"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9Z"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+          </svg>
+          {unreadCount > 0 ? (
+            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent" />
+          ) : null}
+        </Link>
+
+        {user ? (
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-2 py-1.5 md:px-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+              {userInitials(displayName)}
+            </span>
+            <div className="hidden min-w-0 md:block">
+              <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                className="text-xs text-muted transition-colors hover:text-accent"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </header>
   );
@@ -257,13 +300,6 @@ function NavLinks({
       Icon: ReviewQueueIcon,
     });
   }
-  if (user?.role === roles.SuperAdmin) {
-    items.splice(1, 0, {
-      href: "/dashboard/super-admin",
-      label: "Super Admin",
-      Icon: SuperAdminIcon,
-    });
-  }
 
   return items.map((item) => {
     const active = pathname === item.href;
@@ -275,11 +311,11 @@ function NavLinks({
         href={item.href}
         title={item.label}
         aria-label={item.label}
-        className={`flex h-9 w-full items-center overflow-hidden rounded-lg text-sm font-medium transition-[padding,background-color,color] duration-150 ease-out hover:bg-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+        className={`flex h-9 w-full items-center overflow-hidden rounded-xl text-sm font-medium transition-[padding,background-color,color] duration-150 ease-out hover:bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
           expanding ? "justify-start gap-2.5 px-3" : "justify-center px-2"
         } ${
           active
-            ? "bg-background text-foreground"
+            ? "bg-accent/10 text-accent"
             : "text-muted hover:text-foreground"
         }`}
       >
@@ -333,7 +369,7 @@ export function Sidebar() {
   return (
     <aside
       style={{ width }}
-      className={`relative hidden h-full min-h-0 shrink-0 border-r border-border bg-surface md:flex md:flex-col ${
+      className={`relative hidden h-full min-h-0 shrink-0 border-r border-border bg-background md:flex md:flex-col ${
         resizing || animating ? "" : "transition-[width] duration-150 ease-out"
       }`}
     >
@@ -371,7 +407,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="Mobile navigation"
-      className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface p-2 md:hidden"
+      className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-background p-2 md:hidden"
     >
       <NavLinks pathname={pathname} width={SIDEBAR_EXPANDED_MIN} />
     </nav>
@@ -514,20 +550,23 @@ export function AppShell({
     <SidebarContext.Provider
       value={{ width, collapsed, resizing, animating, startResize, toggle }}
     >
-      <div className="flex h-screen flex-col overflow-hidden bg-background">
+      <div className="flex h-screen flex-col overflow-hidden bg-page">
         <TopNav />
         {!hideSidebar && <MobileNav />}
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {!hideSidebar && <Sidebar />}
-          <main
-            className={`flex min-h-0 flex-1 flex-col ${
-              compact
-                ? "overflow-hidden p-2 md:p-3"
-                : "overflow-y-auto p-4 md:p-6 lg:p-8"
-            }`}
-          >
-            {children}
-          </main>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <main
+              className={`flex min-h-0 flex-1 flex-col ${
+                compact
+                  ? "overflow-hidden p-2 md:p-3"
+                  : "overflow-y-auto p-4 md:p-8"
+              }`}
+            >
+              {children}
+            </main>
+            {!compact && <PortalFooter />}
+          </div>
         </div>
       </div>
     </SidebarContext.Provider>

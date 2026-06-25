@@ -2,6 +2,7 @@
 
 import { Suspense, use } from "react";
 import { useSearchParams } from "next/navigation";
+import { resolveReadingResumePage } from "@/lib/reading-bookmark";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
@@ -23,13 +24,15 @@ function readBreadcrumbs(from: string | null) {
 
 function ReadContent({ documentId }: { documentId: string }) {
   const searchParams = useSearchParams();
-  const page = Number(searchParams.get("page") ?? "1");
+  const pageParam = searchParams.get("page");
+  const parsedPage = pageParam ? Number(pageParam) : null;
   const from = searchParams.get("from");
+  const initialPage = resolveReadingResumePage(documentId, parsedPage, 1);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-2">
       <Breadcrumbs items={readBreadcrumbs(from)} />
-      <BookReader documentId={documentId} initialPage={page > 0 ? page : 1} />
+      <BookReader documentId={documentId} initialPage={initialPage} />
     </div>
   );
 }

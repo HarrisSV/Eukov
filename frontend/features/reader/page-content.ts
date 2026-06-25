@@ -1,3 +1,5 @@
+export type ReaderSpreadMode = "double" | "single";
+
 export function nextSpreadLeft(currentLeft: number, totalPages: number): number {
   if (currentLeft + 1 >= totalPages) {
     return currentLeft;
@@ -44,9 +46,64 @@ export function spreadLeftPages(totalPages: number): number[] {
   return spreads;
 }
 
-/** Map any page number to the left page of the spread that contains it. */
-export function leftPageForTarget(targetPage: number, totalPages: number): number {
+export function nextViewPage(
+  currentPage: number,
+  totalPages: number,
+  mode: ReaderSpreadMode,
+): number {
+  if (mode === "single") {
+    return Math.min(totalPages, currentPage + 1);
+  }
+  return nextSpreadLeft(currentPage, totalPages);
+}
+
+export function prevViewPage(currentPage: number, mode: ReaderSpreadMode): number {
+  if (mode === "single") {
+    return Math.max(1, currentPage - 1);
+  }
+  return prevSpreadLeft(currentPage);
+}
+
+export function viewEndPage(
+  currentPage: number,
+  totalPages: number,
+  mode: ReaderSpreadMode,
+): number {
+  if (mode === "single") {
+    return currentPage;
+  }
+  return spreadEndPage(currentPage, totalPages);
+}
+
+export function formatViewLabel(
+  currentPage: number,
+  totalPages: number,
+  mode: ReaderSpreadMode,
+): string {
+  if (mode === "single") {
+    return String(currentPage);
+  }
+  return formatSpreadLabel(currentPage, totalPages);
+}
+
+export function viewPageOptions(totalPages: number, mode: ReaderSpreadMode): number[] {
+  if (mode === "single") {
+    return Array.from({ length: Math.max(1, totalPages) }, (_, index) => index + 1);
+  }
+  return spreadLeftPages(totalPages);
+}
+
+/** Map any page number to the active view page (spread left or single page). */
+export function leftPageForTarget(
+  targetPage: number,
+  totalPages: number,
+  mode: ReaderSpreadMode = "double",
+): number {
   const clamped = Math.min(Math.max(1, Math.floor(targetPage)), Math.max(1, totalPages));
+
+  if (mode === "single") {
+    return clamped;
+  }
 
   for (const left of spreadLeftPages(totalPages)) {
     const end = spreadEndPage(left, totalPages);
@@ -58,8 +115,18 @@ export function leftPageForTarget(targetPage: number, totalPages: number): numbe
   return 1;
 }
 
+const HTML_TAG_PATTERN = /<\/?[a-z][a-z0-9]*(\s[^>]*)?\/?>/i;
+
 export function isHtmlContent(content: string): boolean {
-  return /^\s*</.test(content.trim());
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (/^\s*</.test(trimmed)) {
+    return true;
+  }
+  // Gutenberg listings and other sources often paginate mid-paragraph with inline tags.
+  return HTML_TAG_PATTERN.test(trimmed);
 }
 
 export function htmlToPlainText(content: string): string {

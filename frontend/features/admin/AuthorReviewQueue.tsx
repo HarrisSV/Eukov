@@ -158,14 +158,43 @@ export function AuthorReviewQueue() {
     queryFn: async () => (await api.listAuthorApplications()).applications,
   });
 
+  const pendingCount = appsQuery.data?.length ?? 0;
+
   return (
-    <Card title="Author Requests">
-      {appsQuery.isLoading && (
+    <Card
+      title="Author Requests"
+      badge={`${pendingCount} Pending`}
+      icon={
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+          />
+          <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.75" />
+          <path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+        </svg>
+      }
+    >
+      {appsQuery.isLoading ? (
         <p className="text-sm text-muted">Loading review queue...</p>
-      )}
-      {appsQuery.data?.length === 0 && !appsQuery.isLoading && (
-        <p className="text-sm text-muted">No pending applications.</p>
-      )}
+      ) : null}
+      {pendingCount === 0 && !appsQuery.isLoading ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface px-6 py-10 text-center">
+          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-background text-muted">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"
+                stroke="currentColor"
+                strokeWidth="1.75"
+              />
+              <path d="M3.3 7 12 12l8.7-5M12 22V12" stroke="currentColor" strokeWidth="1.75" />
+            </svg>
+          </span>
+          <p className="text-sm text-muted">No pending applications.</p>
+        </div>
+      ) : null}
       <ul className="flex flex-col gap-4">
         {appsQuery.data?.map((app) => (
           <AuthorRequestItem key={app.id} app={app} />

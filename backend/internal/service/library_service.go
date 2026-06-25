@@ -27,9 +27,11 @@ type LibraryBookView struct {
 	Title       string     `json:"title"`
 	AuthorID    uuid.UUID  `json:"authorId"`
 	AuthorEmail string     `json:"authorEmail"`
+	AuthorName  string     `json:"authorName,omitempty"`
 	GenreID     *uuid.UUID `json:"genreId,omitempty"`
 	GenreName   string     `json:"genreName,omitempty"`
 	Summary     string     `json:"summary,omitempty"`
+	CoverURL    string     `json:"coverUrl,omitempty"`
 	Tags        []string   `json:"tags"`
 	OpenCount   int64      `json:"openCount"`
 	PublishedAt *time.Time `json:"publishedAt,omitempty"`
@@ -51,9 +53,11 @@ func (s *LibraryService) List(ctx context.Context, params repository.LibrarySear
 			Title:       row.Title,
 			AuthorID:    row.AuthorID,
 			AuthorEmail: row.AuthorEmail,
+			AuthorName:  row.AuthorName,
 			GenreID:     row.GenreID,
 			GenreName:   row.GenreName,
 			Summary:     row.Summary,
+			CoverURL:    row.CoverURL,
 			Tags:        tagNames,
 			OpenCount:   row.OpenCount,
 			PublishedAt: row.PublishedAt,

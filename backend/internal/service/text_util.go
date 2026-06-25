@@ -42,7 +42,14 @@ func WordCount(content string) int {
 // IsLikelyHTML reports whether content appears to contain markup.
 func IsLikelyHTML(content string) bool {
 	trimmed := strings.TrimSpace(content)
-	return strings.HasPrefix(trimmed, "<") && strings.Contains(trimmed, ">")
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "<") && strings.Contains(trimmed, ">") {
+		return true
+	}
+	// Inline tags (e.g. Gutenberg catalog listings) may not start with "<".
+	return htmlTagRe.MatchString(trimmed)
 }
 
 // SplitWords is used for preview truncation checks.

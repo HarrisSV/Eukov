@@ -9,6 +9,7 @@ import (
 
 type ReadingService struct {
 	documents *repository.DocumentRepository
+	tags      *repository.DocumentTagRepository
 	files     *DocumentFileService
 	issuance  *IssuanceService
 	progress  *repository.ReadingProgressRepository
@@ -16,16 +17,33 @@ type ReadingService struct {
 
 func NewReadingService(
 	documents *repository.DocumentRepository,
+	tags *repository.DocumentTagRepository,
 	files *DocumentFileService,
 	issuance *IssuanceService,
 	progress *repository.ReadingProgressRepository,
 ) *ReadingService {
 	return &ReadingService{
 		documents: documents,
+		tags:      tags,
 		files:     files,
 		issuance:  issuance,
 		progress:  progress,
 	}
+}
+
+func (s *ReadingService) loadReaderContent(ctx context.Context, authorID, documentID uuid.UUID) (string, error) {
+	content, err := s.files.ReadContent(authorID, documentID)
+	if err != nil {
+		return "", err
+	}
+	tags, err := s.tags.ListByDocument(ctx, documentID)
+	if err != nil {
+		return content, nil
+	}
+	if gutenbergID := GutenbergIDFromTags(tags); gutenbergID != "" {
+		content = RewriteGutenbergMediaURLs(content, gutenbergID)
+	}
+	return content, nil
 }
 
 type PageView struct {
@@ -51,7 +69,7 @@ func (s *ReadingService) GetPage(ctx context.Context, readerID, documentID uuid.
 		}
 		return nil, err
 	}
-	content, err := s.files.ReadContent(doc.AuthorID, documentID)
+	content, err := s.loadReaderContent(ctx, doc.AuthorID, documentID)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +158,7 @@ func (s *ReadingService) GetPreview(ctx context.Context, readerID, documentID uu
 	if err != nil {
 		return nil, err
 	}
-	content, err := s.files.ReadContent(doc.AuthorID, documentID)
+	content, err := s.loadReaderContent(ctx, doc.AuthorID, documentID)
 	if err != nil {
 		return nil, err
 	}

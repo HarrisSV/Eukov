@@ -1,7 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthGuard } from "@/components/auth/AuthGuard";
-import { AuthorReviewQueue } from "@/features/admin/AuthorReviewQueue";
-import { InboxPanel } from "@/features/inbox/InboxPanel";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { UnpublishQueue } from "@/features/admin/UnpublishQueue";
 import { AuthorActivityPanel } from "@/features/admin/AuthorActivityPanel";
 import { roles } from "@/lib/roles";
@@ -11,10 +10,11 @@ export default function AdminDashboardPage() {
     <AppShell>
       <AuthGuard minRole={roles.Admin}>
         <div className="flex flex-col gap-6">
-          <h1 className="text-3xl font-bold">Author Review Queue</h1>
+          <PageHeader
+            title="Review Queue"
+            description="Monitor author activity and moderate unpublish requests."
+          />
           <AuthorActivityPanel />
-          <AuthorReviewQueue />
-          <InboxPanel />
           <h2 className="text-2xl font-bold">Unpublish moderation</h2>
           <UnpublishQueue />
         </div>

@@ -231,6 +231,9 @@ func isPageBreakBlock(block string) bool {
 }
 
 func splitBlockByWordLimitHTML(blockHTML string, maxWords int) []string {
+	if strings.Contains(strings.ToLower(blockHTML), "<img") {
+		return []string{blockHTML}
+	}
 	words := strings.Fields(stripHTMLTags(blockHTML))
 	if len(words) <= maxWords {
 		return []string{blockHTML}

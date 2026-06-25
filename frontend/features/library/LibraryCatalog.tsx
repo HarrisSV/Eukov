@@ -47,7 +47,22 @@ export function LibraryCatalog() {
       (await api.getRecommendedLibrary(RECOMMENDED_LIMIT)).books,
   });
 
+  const docketQuery = useQuery({
+    queryKey: ["docket-books"],
+    queryFn: async () => (await api.getDocketBooks()).books,
+  });
+
   const books = libraryQuery.data?.books ?? [];
+
+  const continueReadingIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const entry of docketQuery.data ?? []) {
+      if (entry.lastOpenedAt || entry.currentPage > 1) {
+        ids.add(entry.documentId);
+      }
+    }
+    return ids;
+  }, [docketQuery.data]);
 
   const recommendedBooks = useMemo(
     () => (recommendedQuery.data ?? []).slice(0, RECOMMENDED_LIMIT),
@@ -119,11 +134,15 @@ export function LibraryCatalog() {
             role="region"
             aria-label="Recommended books"
           >
-            <div className="flex w-max min-w-full gap-4">
+            <div className="flex gap-4">
               {recommendedBooks.map((book) => (
-                <div key={`rec-${book.id}`} className="w-72 shrink-0">
+                <div
+                  key={`rec-${book.id}`}
+                  className="w-full shrink-0 md:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)]"
+                >
                   <LibraryCard
                     book={book}
+                    continueReading={continueReadingIds.has(book.id)}
                     onPreview={() => setPreviewBook(book)}
                   />
                 </div>
@@ -173,21 +192,39 @@ export function LibraryCatalog() {
 
 function LibraryCard({
   book,
+  continueReading = false,
   onPreview,
 }: {
-  book: LibraryBook;
+  book: LibraryBook & { reason?: string };
+  continueReading?: boolean;
   onPreview: () => void;
 }) {
   return (
     <article className="wireframe-panel flex flex-col gap-3 border-2 border-foreground bg-background p-4">
+      {book.coverUrl ? (
+        <div className="aspect-[2/3] w-full overflow-hidden border border-foreground bg-surface">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={book.coverUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        </div>
+      ) : null}
       <h3 className="font-bold text-foreground">{book.title}</h3>
-      <p className="text-sm text-muted">{book.authorEmail}</p>
+      {book.authorName ? (
+        <p className="text-sm text-muted">-by {book.authorName}</p>
+      ) : null}
       {book.genreName && (
         <p className="text-sm text-muted">{formatGenreLabel(book.genreName)}</p>
       )}
       {book.summary && (
         <p className="line-clamp-3 text-sm text-foreground">{book.summary}</p>
       )}
+      {"reason" in book && book.reason ? (
+        <p className="text-xs text-muted">AI pick: {book.reason}</p>
+      ) : null}
       {book.tags.length > 0 && (
         <ul className="flex flex-wrap gap-1">
           {book.tags.map((tag) => (
@@ -200,7 +237,7 @@ function LibraryCard({
           ))}
         </ul>
       )}
-      <div className="mt-auto">
+      <div className="mt-auto flex flex-col gap-2">
         <button
           type="button"
           onClick={onPreview}
@@ -208,6 +245,9 @@ function LibraryCard({
         >
           Preview · Read more
         </button>
+        {continueReading ? (
+          <p className="text-center text-sm font-medium text-foreground">continue reading...</p>
+        ) : null}
       </div>
     </article>
   );

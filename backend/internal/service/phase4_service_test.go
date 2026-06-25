@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/eukov/backend/internal/ai"
 	"github.com/eukov/backend/internal/models"
 	"github.com/eukov/backend/internal/repository"
 	"github.com/eukov/backend/internal/roles"
@@ -135,6 +136,7 @@ func TestSubscriptionAndIssuanceFlow(t *testing.T) {
 
 	readingSvc := NewReadingService(
 		repository.NewDocumentRepository(db),
+		repository.NewDocumentTagRepository(db),
 		fileSvc,
 		issueSvc,
 		repository.NewReadingProgressRepository(db),
@@ -168,6 +170,8 @@ func TestRecommendationService(t *testing.T) {
 		repository.NewDocumentTagRepository(db),
 		repository.NewReaderActivityRepository(db),
 		repository.NewPreferenceRepository(db),
+		repository.NewReadingProgressRepository(db),
+		NewAIService(ai.NewQwenClientFromEnv(), repository.NewDocumentRepository(db), NewDocumentFileService(t.TempDir())),
 	)
 	recs, err := svc.Recommend(ctx, readerID, 5)
 	if err != nil {

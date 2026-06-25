@@ -47,4 +47,13 @@ describe("htmlToPlainText", () => {
       "Hello",
     );
   });
+
+  it("detects inline html tags not at the start of the page", () => {
+    const gutenbergListing =
+      '45 <b>Vailima Letters</b> Robert Louis Stevenson <b>1883</b> 1895';
+    expect(isHtmlContent(gutenbergListing)).toBe(true);
+    expect(htmlToPlainText(gutenbergListing)).toBe(
+      "45 Vailima Letters Robert Louis Stevenson 1883 1895",
+    );
+  });
 });

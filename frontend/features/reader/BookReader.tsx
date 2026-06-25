@@ -1,33 +1,63 @@
 "use client";
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { api, ApiError } from "@/services/api";
 import {
-  formatSpreadLabel,
+  formatViewLabel,
   htmlToPlainText,
   isHtmlContent,
   leftPageForTarget,
-  nextSpreadLeft,
-  prevSpreadLeft,
+  nextViewPage,
+  prevViewPage,
   rightPageNumber,
-  spreadEndPage,
-  spreadLeftPages,
+  type ReaderSpreadMode,
+  viewEndPage,
+  viewPageOptions,
 } from "@/features/reader/page-content";
+import { BookSearchPanel } from "@/features/reader/BookSearchPanel";
+import { ChapterNavStrip } from "@/features/reader/ChapterNavStrip";
+import {
+  activeChapterId as resolveActiveChapterId,
+  annotateChapters,
+  type BookChapter,
+} from "@/features/reader/chapters";
 import {
   StPageFlipBook,
+  READER_ZOOM_DEFAULT,
+  READER_ZOOM_MAX,
+  READER_ZOOM_MIN,
+  READER_ZOOM_STEP,
+  clampReaderZoom,
   type StPageFlipBookHandle,
 } from "@/features/reader/StPageFlipBook";
 import {
-  pageNumberFromSelection,
   readReadingBookmark,
-  selectionOffsetIn,
+  resolveReadingResumePage,
   writeReadingBookmark,
   type ReadingBookmark,
 } from "@/lib/reading-bookmark";
-import { scrollToReadingPosition } from "@/lib/reading-bookmark-scroll";
+import { scrollToChapterMarker, scrollToReadingPosition } from "@/lib/reading-bookmark-scroll";
+import { BookFullSummaryModal } from "@/features/reader/BookFullSummaryModal";
 import "./book-reader.css";
+
+const SPREAD_MODE_KEY = "eukov-reader-spread-mode";
+
+function readSpreadModePreference(): ReaderSpreadMode {
+  if (typeof window === "undefined") {
+    return "double";
+  }
+  const stored = window.localStorage.getItem(SPREAD_MODE_KEY);
+  return stored === "single" ? "single" : "double";
+}
+
+function writeSpreadModePreference(mode: ReaderSpreadMode) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(SPREAD_MODE_KEY, mode);
+}
 
 interface BookReaderProps {
   documentId: string;
@@ -37,7 +67,11 @@ interface BookReaderProps {
 export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
   const queryClient = useQueryClient();
   const spreadHydratedRef = useRef(false);
-  const pendingScrollRef = useRef<{ page: number; charOffset?: number } | null>(null);
+  const pendingScrollRef = useRef<{
+    page: number;
+    charOffset?: number;
+    chapterId?: string;
+  } | null>(null);
   const leftTextRef = useRef<HTMLDivElement | null>(null);
   const rightTextRef = useRef<HTMLDivElement | null>(null);
   const bookRef = useRef<StPageFlipBookHandle | null>(null);
@@ -45,8 +79,10 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
   const [rate, setRate] = useState(1);
   const [playing, setPlaying] = useState(false);
   const [bookmark, setBookmark] = useState<ReadingBookmark | null>(null);
-  const [checkpointMessage, setCheckpointMessage] = useState<string | null>(null);
   const [navLocked, setNavLocked] = useState(false);
+  const [showFullSummary, setShowFullSummary] = useState(false);
+  const [zoom, setZoom] = useState(READER_ZOOM_DEFAULT);
+  const [spreadMode, setSpreadMode] = useState<ReaderSpreadMode>(() => readSpreadModePreference());
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const metaQuery = useQuery({
@@ -72,6 +108,11 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
         content: query.data!.content,
       }))
     : [];
+
+  const { chapters, pages: readerPages } = useMemo(
+    () => annotateChapters(pages),
+    [pages],
+  );
 
   const previewQuery = useQuery({
     queryKey: ["book-preview", documentId],
@@ -102,7 +143,7 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
   const accessDenied =
     metaQuery.error instanceof ApiError && metaQuery.error.status === 403;
 
-  const rightPage = rightPageNumber(leftPage, totalPages);
+  const rightPage = spreadMode === "double" ? rightPageNumber(leftPage, totalPages) : null;
 
   const stopSpeech = useCallback(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -193,16 +234,11 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
   useEffect(() => {
     spreadHydratedRef.current = false;
     setBookmark(readReadingBookmark(documentId));
-    setCheckpointMessage(null);
   }, [documentId]);
 
   useEffect(() => {
-    if (!checkpointMessage) {
-      return;
-    }
-    const timer = window.setTimeout(() => setCheckpointMessage(null), 3500);
-    return () => window.clearTimeout(timer);
-  }, [checkpointMessage]);
+    setBookmark(readReadingBookmark(documentId));
+  }, [documentId, leftPage]);
 
   const applyPendingScroll = useCallback(() => {
     const pending = pendingScrollRef.current;
@@ -224,6 +260,11 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
 
     pendingScrollRef.current = null;
     window.requestAnimationFrame(() => {
+      if (pending.chapterId) {
+        scrollToChapterMarker(container, pending.chapterId);
+        return;
+      }
+
       scrollToReadingPosition(container, pending.charOffset);
     });
   }, [leftPage, rightPage, syncTextRefs]);
@@ -233,10 +274,10 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
       return;
     }
     spreadHydratedRef.current = true;
-    const spreadLeft = leftPageForTarget(initialPage, totalPages);
+    const spreadLeft = leftPageForTarget(initialPage, totalPages, spreadMode);
     setLeftPage(spreadLeft);
     bookRef.current?.turnToPage(spreadLeft - 1);
-  }, [initialPage, pagesReady, totalPages]);
+  }, [initialPage, pagesReady, spreadMode, totalPages]);
 
   useEffect(() => {
     if (!pagesReady) {
@@ -247,42 +288,61 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
   }, [applyPendingScroll, leftPage, pagesReady, syncTextRefs]);
 
   const handleBookmark = useCallback(() => {
-    syncTextRefs();
-    const selectedPage = pageNumberFromSelection(leftPage);
-    const container =
-      selectedPage === leftPage
-        ? leftTextRef.current
-        : selectedPage === rightPage
-          ? rightTextRef.current
-          : leftTextRef.current;
-    const selectionText =
-      typeof window !== "undefined" ? window.getSelection()?.toString().trim() : "";
-    const charOffset = container ? selectionOffsetIn(container) : undefined;
-
     const saved: ReadingBookmark = {
       documentId,
-      page: selectedPage,
-      anchorText: selectionText || undefined,
-      charOffset,
+      page: leftPage,
       savedAt: Date.now(),
     };
 
     writeReadingBookmark(saved);
     setBookmark(saved);
-    setCheckpointMessage(`Checkpoint made at page ${selectedPage}`);
-    progressMutation.mutate(selectedPage);
-  }, [documentId, leftPage, progressMutation, rightPage, syncTextRefs]);
+    progressMutation.mutate(leftPage);
+  }, [documentId, leftPage, progressMutation]);
 
-  const handleResumeBookmark = useCallback(() => {
-    if (!bookmark) {
-      return;
-    }
-    pendingScrollRef.current = {
-      page: bookmark.page,
-      charOffset: bookmark.charOffset,
-    };
-    changeSpread(leftPageForTarget(bookmark.page, totalPages));
-  }, [bookmark, changeSpread, totalPages]);
+  const isBookmarkedHere = bookmark?.page === leftPage;
+
+  const scrollToChapter = useCallback(
+    (chapter: BookChapter) => {
+      pendingScrollRef.current = {
+        page: chapter.pageNumber,
+        chapterId: chapter.id,
+      };
+
+      const targetLeft = leftPageForTarget(chapter.pageNumber, totalPages, spreadMode);
+      if (targetLeft === leftPage) {
+        syncTextRefs();
+        window.requestAnimationFrame(() => {
+          const container = document.querySelector(
+            `[data-flipbook-page="${chapter.pageNumber}"] .reader-page__text`,
+          ) as HTMLDivElement | null;
+          if (container) {
+            scrollToChapterMarker(container, chapter.id);
+          }
+          pendingScrollRef.current = null;
+        });
+        return;
+      }
+
+      changeSpread(targetLeft, { animate: true });
+    },
+    [changeSpread, leftPage, spreadMode, syncTextRefs, totalPages],
+  );
+
+  const handleSpreadModeToggle = useCallback(() => {
+    const nextMode: ReaderSpreadMode = spreadMode === "double" ? "single" : "double";
+    const targetPage = leftPageForTarget(leftPage, totalPages, nextMode);
+    setSpreadMode(nextMode);
+    writeSpreadModePreference(nextMode);
+    setLeftPage(targetPage);
+    bookRef.current?.turnToPage(targetPage - 1);
+  }, [leftPage, spreadMode, totalPages]);
+
+  const handleSearchNavigate = useCallback(
+    (targetLeftPage: number) => {
+      changeSpread(targetLeftPage);
+    },
+    [changeSpread],
+  );
 
   useEffect(
     () => () => {
@@ -294,20 +354,33 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
   );
 
   const title = metaQuery.data?.title ?? "Loading...";
-  const spreadEnd = spreadEndPage(leftPage, totalPages);
-  const spreadLabel = formatSpreadLabel(leftPage, totalPages);
-  const spreadOptions = spreadLeftPages(totalPages);
+  const viewEnd = viewEndPage(leftPage, totalPages, spreadMode);
+  const viewLabel = formatViewLabel(leftPage, totalPages, spreadMode);
+  const viewOptions = viewPageOptions(totalPages, spreadMode);
   const canGoPrev = leftPage > 1 && !navLocked;
-  const canGoNext = nextSpreadLeft(leftPage, totalPages) !== leftPage && !navLocked;
-  const startPageIndex = leftPageForTarget(initialPage, totalPages) - 1;
+  const canGoNext = nextViewPage(leftPage, totalPages, spreadMode) !== leftPage && !navLocked;
+  const startPageIndex = leftPageForTarget(initialPage, totalPages, spreadMode) - 1;
+  const currentChapterId = resolveActiveChapterId(chapters, viewEnd);
 
   return (
     <div className="reader-shell min-h-0 flex-1">
       <header className="reader-header">
-        <h1 className="reader-header__title">{title}</h1>
+        <div className="reader-header__row">
+          <h1 className="reader-header__title">{title}</h1>
+          {pagesReady ? (
+            <BookSearchPanel
+              pages={pages}
+              spreadMode={spreadMode}
+              totalPages={totalPages}
+              currentPage={leftPage}
+              navLocked={navLocked}
+              onNavigate={handleSearchNavigate}
+            />
+          ) : null}
+        </div>
         <p className="reader-header__meta">
-          Pages {leftPage}
-          {spreadEnd !== leftPage ? `–${spreadEnd}` : ""} of {totalPages}
+          {spreadMode === "single" ? "Page" : "Pages"} {leftPage}
+          {viewEnd !== leftPage ? `–${viewEnd}` : ""} of {totalPages}
         </p>
       </header>
 
@@ -352,29 +425,25 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
                 <button
                   type="button"
                   onClick={handleBookmark}
-                  className="reader-controls__button reader-controls__button--bookmark"
+                  aria-pressed={isBookmarkedHere}
+                  className={`reader-controls__button reader-controls__button--bookmark${
+                    isBookmarkedHere ? " reader-controls__button--bookmarked" : ""
+                  }`}
                 >
-                  Bookmark
+                  {isBookmarkedHere ? "Bookmarked" : "Bookmark"}
                 </button>
-                {checkpointMessage ? (
-                  <p className="reader-bookmark__message" role="status">
-                    {checkpointMessage}
-                  </p>
-                ) : null}
-                {bookmark ? (
-                  <button
-                    type="button"
-                    onClick={handleResumeBookmark}
-                    className="reader-controls__button reader-controls__button--resume"
-                  >
-                    Read from where you left
-                  </button>
-                ) : null}
               </div>
               <button
                 type="button"
+                onClick={() => setShowFullSummary(true)}
+                className="reader-controls__button reader-controls__button--ai-summary"
+              >
+                AI Summary
+              </button>
+              <button
+                type="button"
                 disabled={!canGoPrev}
-                onClick={() => changeSpread((p) => prevSpreadLeft(p), { animate: true })}
+                onClick={() => changeSpread((p) => prevViewPage(p, spreadMode), { animate: true })}
                 className="reader-controls__button disabled:cursor-not-allowed"
               >
                 Previous
@@ -382,10 +451,20 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
               <button
                 type="button"
                 disabled={!canGoNext}
-                onClick={() => changeSpread((p) => nextSpreadLeft(p, totalPages), { animate: true })}
+                onClick={() =>
+                  changeSpread((p) => nextViewPage(p, totalPages, spreadMode), { animate: true })
+                }
                 className="reader-controls__button disabled:cursor-not-allowed"
               >
                 Next
+              </button>
+              <button
+                type="button"
+                onClick={handleSpreadModeToggle}
+                className="reader-controls__button reader-controls__button--layout"
+                aria-pressed={spreadMode === "single"}
+              >
+                {spreadMode === "single" ? "Double Split" : "Single Split"}
               </button>
               <label className="reader-controls__field">
                 Jump to
@@ -393,11 +472,11 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
                   value={leftPage}
                   onChange={(e) => changeSpread(Number(e.target.value))}
                   className="reader-controls__select reader-controls__select--spread"
-                  aria-label={`Jump to pages ${spreadLabel}`}
+                  aria-label={`Jump to ${spreadMode === "single" ? "page" : "pages"} ${viewLabel}`}
                 >
-                  {spreadOptions.map((spreadLeft) => (
-                    <option key={spreadLeft} value={spreadLeft}>
-                      {formatSpreadLabel(spreadLeft, totalPages)}
+                  {viewOptions.map((pageNumber) => (
+                    <option key={pageNumber} value={pageNumber}>
+                      {formatViewLabel(pageNumber, totalPages, spreadMode)}
                     </option>
                   ))}
                 </select>
@@ -459,33 +538,97 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
               <PageTurnButton
                 direction="prev"
                 disabled={!canGoPrev}
-                onClick={() => changeSpread((p) => prevSpreadLeft(p), { animate: true })}
+                onClick={() => changeSpread((p) => prevViewPage(p, spreadMode), { animate: true })}
               />
               <div className="reader-book min-w-0">
                 {!pagesReady ? (
                   <p className="reader-flipbook-loading">Preparing book...</p>
                 ) : (
-                  <StPageFlipBook
-                    ref={bookRef}
-                    pages={pages}
-                    startPageIndex={startPageIndex}
-                    onFlip={handleBookFlip}
-                    onFlippingChange={setNavLocked}
-                  />
+                  <>
+                    <StPageFlipBook
+                      ref={bookRef}
+                      pages={readerPages}
+                      startPageIndex={startPageIndex}
+                      spreadMode={spreadMode}
+                      zoom={zoom}
+                      onZoomChange={setZoom}
+                      onFlip={handleBookFlip}
+                      onFlippingChange={setNavLocked}
+                    />
+                    <div className="reader-book__zoom-controls" role="group" aria-label="Zoom">
+                      <BookZoomButton
+                        label="Zoom out"
+                        disabled={zoom <= READER_ZOOM_MIN}
+                        onClick={() =>
+                          setZoom((value) => clampReaderZoom(value - READER_ZOOM_STEP))
+                        }
+                      >
+                        −
+                      </BookZoomButton>
+                      <BookZoomButton
+                        label="Zoom in"
+                        disabled={zoom >= READER_ZOOM_MAX}
+                        onClick={() =>
+                          setZoom((value) => clampReaderZoom(value + READER_ZOOM_STEP))
+                        }
+                      >
+                        +
+                      </BookZoomButton>
+                    </div>
+                  </>
                 )}
               </div>
               <PageTurnButton
                 direction="next"
                 disabled={!canGoNext}
                 onClick={() =>
-                  changeSpread((p) => nextSpreadLeft(p, totalPages), { animate: true })
+                  changeSpread((p) => nextViewPage(p, totalPages, spreadMode), { animate: true })
                 }
               />
             </div>
           </div>
+
+          <ChapterNavStrip
+            chapters={chapters}
+            activeChapterId={currentChapterId}
+            onSelect={scrollToChapter}
+          />
         </div>
       )}
+
+      {showFullSummary && metaQuery.data ? (
+        <BookFullSummaryModal
+          documentId={documentId}
+          title={metaQuery.data.title}
+          onClose={() => setShowFullSummary(false)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function BookZoomButton({
+  children,
+  label,
+  onClick,
+  disabled,
+}: {
+  children: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="reader-book__zoom-btn"
+    >
+      {children}
+    </button>
   );
 }
 

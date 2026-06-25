@@ -7,8 +7,10 @@ import { BookReader } from "@/features/reader/BookReader";
 
 const getDocumentPage = vi.fn();
 
-vi.mock("@/features/reader/StPageFlipBook", () => ({
-  StPageFlipBook: forwardRef(function MockStPageFlipBook(
+vi.mock("@/features/reader/StPageFlipBook", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/reader/StPageFlipBook")>();
+
+  const MockStPageFlipBook = forwardRef(function MockStPageFlipBook(
     {
       pages,
       onFlip,
@@ -54,8 +56,13 @@ vi.mock("@/features/reader/StPageFlipBook", () => ({
         {right ? <div data-flipbook-page={right.pageNumber}>{right.content}</div> : null}
       </div>
     );
-  }),
-}));
+  });
+
+  return {
+    ...actual,
+    StPageFlipBook: MockStPageFlipBook,
+  };
+});
 
 vi.mock("@/services/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/services/api")>();

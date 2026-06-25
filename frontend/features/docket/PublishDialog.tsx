@@ -3,11 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ApiError, formatGenreLabel, NetworkError } from "@/services/api";
+import type { DraftDocumentPayload } from "@/features/docket/DraftEditor";
 
 interface PublishDialogProps {
   documentId: string;
   title: string;
-  content: string;
+  getPayload: () => Promise<DraftDocumentPayload>;
   onClose: () => void;
   onPublished: () => void;
 }
@@ -15,7 +16,7 @@ interface PublishDialogProps {
 export function PublishDialog({
   documentId,
   title,
-  content,
+  getPayload,
   onClose,
   onPublished,
 }: PublishDialogProps) {
@@ -37,11 +38,14 @@ export function PublishDialog({
       .map((t) => t.trim())
       .filter(Boolean);
     try {
+      const payload = await getPayload();
       await api.publishDocument(documentId, {
         genre,
         tags,
         title,
-        content,
+        content: payload.content,
+        contentFormat: payload.contentFormat,
+        readerHtml: payload.readerHtml,
       });
       onPublished();
     } catch (err) {
@@ -81,9 +85,9 @@ export function PublishDialog({
             className="border-2 border-foreground bg-background px-3 py-2"
           >
             <option value="">Select genre</option>
-            {(genresQuery.data?.genres ?? []).map((g) => (
-              <option key={g.id} value={g.name}>
-                {formatGenreLabel(g.name)}
+            {(genresQuery.data?.genres ?? []).map((item) => (
+              <option key={item.id} value={item.name}>
+                {formatGenreLabel(item.name)}
               </option>
             ))}
           </select>
@@ -95,25 +99,25 @@ export function PublishDialog({
             id="publish-keywords"
             value={keywords}
             onChange={(e) => setKeywords(e.target.value)}
+            placeholder="fantasy, adventure"
             className="border-2 border-foreground bg-background px-3 py-2"
-            placeholder="e.g. politics, essay"
           />
         </div>
 
         {error && (
-          <p className="mt-3 text-sm text-danger" role="alert">
+          <p className="mt-4 text-sm text-danger" role="alert">
             {error}
           </p>
         )}
 
-        <div className="mt-6 flex gap-2">
+        <div className="mt-6 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={handlePublish}
-            disabled={submitting || !genre}
+            onClick={() => void handlePublish()}
+            disabled={submitting || !genre || !keywords.trim()}
             className="border-2 border-foreground bg-foreground px-4 py-2 text-sm font-bold uppercase text-background disabled:opacity-50"
           >
-            {submitting ? "Publishing..." : "Confirm publish"}
+            {submitting ? "Publishing…" : "Publish"}
           </button>
           <button
             type="button"

@@ -1,0 +1,1 @@
+ALTER TABLE document_metadata ADD COLUMN IF NOT EXISTS cover_url TEXT NOT NULL DEFAULT '';
