@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReaderSpreadMode } from "@/features/reader/page-content";
 import { leftPageForTarget, viewEndPage } from "@/features/reader/page-content";
 import {
@@ -75,6 +75,8 @@ export function BookSearchPanel({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [open, setOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const suggestionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const wordIndex = useMemo(() => buildBookWordIndex(pages), [pages]);
   const suggestions = useMemo(() => suggestBookWords(wordIndex, query), [query, wordIndex]);
@@ -83,7 +85,19 @@ export function BookSearchPanel({
 
   useEffect(() => {
     setExpanded(false);
+    setHighlightIndex(-1);
   }, [query]);
+
+  useEffect(() => {
+    setHighlightIndex(-1);
+  }, [expanded]);
+
+  useEffect(() => {
+    if (highlightIndex < 0) {
+      return;
+    }
+    suggestionRefs.current[highlightIndex]?.scrollIntoView({ block: "nearest" });
+  }, [highlightIndex, visibleSuggestions]);
 
   useEffect(() => {
     if (!activeQuery || navLocked) {
@@ -152,8 +166,51 @@ export function BookSearchPanel({
     runSearch(query);
   };
 
+  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    const showList = open && query.trim().length > 0 && suggestions.length > 0;
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (showList && highlightIndex >= 0 && visibleSuggestions[highlightIndex]) {
+        selectSuggestion(visibleSuggestions[highlightIndex]);
+      } else {
+        runSearch(query);
+      }
+      return;
+    }
+
+    if (!showList) {
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightIndex((prev) => {
+        if (visibleSuggestions.length === 0) return -1;
+        return prev < visibleSuggestions.length - 1 ? prev + 1 : 0;
+      });
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightIndex((prev) => {
+        if (visibleSuggestions.length === 0) return -1;
+        return prev <= 0 ? visibleSuggestions.length - 1 : prev - 1;
+      });
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+      setHighlightIndex(-1);
+    }
+  };
+
   const selectSuggestion = (word: string) => {
     setQuery(word);
+    setHighlightIndex(-1);
     runSearch(word);
   };
 
@@ -162,103 +219,120 @@ export function BookSearchPanel({
 
   return (
     <section className="reader-search" aria-label="Search in book">
-      <form className="reader-search__form" onSubmit={handleSubmit}>
-        <div className="reader-search__input-wrap">
-          <SearchIcon />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => {
-              const next = event.target.value;
-              setQuery(next);
-              setOpen(true);
-              const trimmed = next.trim();
-              if (!trimmed || trimmed.length < 2) {
-                if (matchingPages.length > 0 && activeQuery) {
-                  clearSearchHighlightsOnPages(matchingPages);
-                }
-                setActiveQuery("");
-                setMatchingPages([]);
-                setStatusMessage(trimmed.length > 0 ? "Type at least 2 characters" : null);
-                if (!trimmed) {
-                  setOpen(false);
-                }
-              }
-            }}
-            onFocus={() => {
-              if (query.trim()) {
+      <div className="reader-search__row">
+        <form className="reader-search__form" onSubmit={handleSubmit}>
+          <div className="reader-search__input-wrap">
+            <SearchIcon />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => {
+                const next = event.target.value;
+                setQuery(next);
                 setOpen(true);
+                const trimmed = next.trim();
+                if (!trimmed || trimmed.length < 2) {
+                  if (matchingPages.length > 0 && activeQuery) {
+                    clearSearchHighlightsOnPages(matchingPages);
+                  }
+                  setActiveQuery("");
+                  setMatchingPages([]);
+                  setStatusMessage(trimmed.length > 0 ? "Type at least 2 characters" : null);
+                  if (!trimmed) {
+                    setOpen(false);
+                  }
+                }
+              }}
+              onFocus={() => {
+                if (query.trim()) {
+                  setOpen(true);
+                }
+              }}
+              onKeyDown={handleInputKeyDown}
+              onBlur={() => {
+                window.setTimeout(() => setOpen(false), 150);
+              }}
+              placeholder="Find a word…"
+              className="reader-search__input"
+              role="combobox"
+              aria-expanded={showSuggestions}
+              aria-autocomplete="list"
+              aria-controls="reader-search-suggestions"
+              aria-activedescendant={
+                showSuggestions && highlightIndex >= 0
+                  ? `reader-search-option-${highlightIndex}`
+                  : undefined
               }
-            }}
-            onBlur={() => {
-              window.setTimeout(() => setOpen(false), 150);
-            }}
-            placeholder="Find a word…"
-            className="reader-search__input"
-            role="combobox"
-            aria-expanded={showSuggestions}
-            aria-autocomplete="list"
-            aria-controls="reader-search-suggestions"
-          />
-        </div>
-
-        {showSuggestions ? (
-          <div id="reader-search-suggestions" className="reader-search__suggestions" role="listbox">
-            <ul className="reader-search__suggestion-list">
-              {visibleSuggestions.map((word) => (
-                <li key={word}>
-                  <button
-                    type="button"
-                    role="option"
-                    className="reader-search__suggestion"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => selectSuggestion(word)}
-                  >
-                    {word}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {hasMoreSuggestions ? (
-              <button
-                type="button"
-                className="reader-search__expand"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => setExpanded((value) => !value)}
-                aria-expanded={expanded}
-              >
-                <ChevronDownIcon />
-                <span>{expanded ? "Show less" : `Show all ${suggestions.length} words`}</span>
-              </button>
-            ) : null}
+            />
           </div>
-        ) : null}
-      </form>
-      {matchingPages.length > 0 ? (
-        <p className="reader-search__status">
-          Found on {matchingPages.length === 1 ? "page" : "pages"}{" "}
-          {matchingPages.map((pageNumber, index) => {
-            const isCurrentView = pageNumber >= currentPage && pageNumber <= viewEnd;
-            return (
-              <span key={pageNumber}>
-                {index > 0 ? ", " : null}
+
+          {showSuggestions ? (
+            <div id="reader-search-suggestions" className="reader-search__suggestions" role="listbox">
+              <ul className="reader-search__suggestion-list">
+                {visibleSuggestions.map((word, index) => (
+                  <li key={word}>
+                    <button
+                      ref={(element) => {
+                        suggestionRefs.current[index] = element;
+                      }}
+                      type="button"
+                      id={`reader-search-option-${index}`}
+                      role="option"
+                      aria-selected={highlightIndex === index}
+                      className={`reader-search__suggestion${
+                        highlightIndex === index ? " reader-search__suggestion--active" : ""
+                      }`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => setHighlightIndex(index)}
+                      onClick={() => selectSuggestion(word)}
+                    >
+                      {word}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {hasMoreSuggestions ? (
                 <button
                   type="button"
-                  className={`reader-search__page-link${
-                    isCurrentView ? " reader-search__page-link--current" : ""
-                  }`}
-                  onClick={() => goToPage(pageNumber)}
-                  aria-current={isCurrentView ? "page" : undefined}
+                  className="reader-search__expand"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setExpanded((value) => !value)}
+                  aria-expanded={expanded}
                 >
-                  {pageNumber}
+                  <ChevronDownIcon />
+                  <span>{expanded ? "Show less" : `Show all ${suggestions.length} words`}</span>
                 </button>
-              </span>
-            );
-          })}
-        </p>
-      ) : statusMessage ? (
-        <p className="reader-search__status">{statusMessage}</p>
-      ) : null}
+              ) : null}
+            </div>
+          ) : null}
+        </form>
+
+        {matchingPages.length > 0 ? (
+          <p className="reader-search__status">
+            Found on {matchingPages.length === 1 ? "page" : "pages"}{" "}
+            {matchingPages.map((pageNumber, index) => {
+              const isCurrentView = pageNumber >= currentPage && pageNumber <= viewEnd;
+              return (
+                <span key={pageNumber}>
+                  {index > 0 ? ", " : null}
+                  <button
+                    type="button"
+                    className={`reader-search__page-link${
+                      isCurrentView ? " reader-search__page-link--current" : ""
+                    }`}
+                    onClick={() => goToPage(pageNumber)}
+                    aria-current={isCurrentView ? "page" : undefined}
+                  >
+                    {pageNumber}
+                  </button>
+                </span>
+              );
+            })}
+          </p>
+        ) : statusMessage ? (
+          <p className="reader-search__status">{statusMessage}</p>
+        ) : null}
+      </div>
     </section>
   );
 }

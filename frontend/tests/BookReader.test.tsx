@@ -45,6 +45,7 @@ vi.mock("@/features/reader/StPageFlipBook", async (importOriginal) => {
       getCurrentPageIndex() {
         return pageIndex;
       },
+      remeasure() {},
     }));
 
     const left = pages[pageIndex];

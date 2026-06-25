@@ -3,6 +3,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { api, ApiError } from "@/services/api";
 import {
   formatViewLabel,
@@ -62,9 +63,10 @@ function writeSpreadModePreference(mode: ReaderSpreadMode) {
 interface BookReaderProps {
   documentId: string;
   initialPage?: number;
+  from?: "library" | "docket";
 }
 
-export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
+export function BookReader({ documentId, initialPage = 1, from = "library" }: BookReaderProps) {
   const queryClient = useQueryClient();
   const spreadHydratedRef = useRef(false);
   const pendingScrollRef = useRef<{
@@ -83,6 +85,9 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
   const [showFullSummary, setShowFullSummary] = useState(false);
   const [zoom, setZoom] = useState(READER_ZOOM_DEFAULT);
   const [spreadMode, setSpreadMode] = useState<ReaderSpreadMode>(() => readSpreadModePreference());
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenMounted, setFullscreenMounted] = useState(false);
+  const fullscreenRef = useRef<HTMLDivElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const metaQuery = useQuery({
@@ -353,14 +358,126 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
     [],
   );
 
+  useEffect(() => {
+    setFullscreenMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isFullscreen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsFullscreen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    if (!isFullscreen || !pagesReady) {
+      return;
+    }
+
+    const syncLayout = () => {
+      bookRef.current?.turnToPage(leftPage - 1);
+      bookRef.current?.remeasure();
+    };
+
+    const raf = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(syncLayout);
+    });
+    const timer = window.setTimeout(syncLayout, 120);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, [isFullscreen, leftPage, pagesReady]);
+
+  useEffect(() => {
+    if (!isFullscreen || !fullscreenRef.current) {
+      return;
+    }
+
+    const element = fullscreenRef.current;
+    void element.requestFullscreen?.().catch(() => {
+      // Fixed overlay still works when the Fullscreen API is unavailable.
+    });
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullscreen(false);
+      }
+    };
+
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const exitFullscreen = useCallback(() => {
+    setIsFullscreen(false);
+    if (document.fullscreenElement) {
+      void document.exitFullscreen?.().catch(() => undefined);
+    }
+  }, []);
+
+  const enterFullscreen = useCallback(() => {
+    setIsFullscreen(true);
+  }, []);
+
   const title = metaQuery.data?.title ?? "Loading...";
   const viewEnd = viewEndPage(leftPage, totalPages, spreadMode);
   const viewLabel = formatViewLabel(leftPage, totalPages, spreadMode);
   const viewOptions = viewPageOptions(totalPages, spreadMode);
   const canGoPrev = leftPage > 1 && !navLocked;
   const canGoNext = nextViewPage(leftPage, totalPages, spreadMode) !== leftPage && !navLocked;
-  const startPageIndex = leftPageForTarget(initialPage, totalPages, spreadMode) - 1;
   const currentChapterId = resolveActiveChapterId(chapters, viewEnd);
+
+  const bookStage = (
+    <ReaderBookStage
+      pagesReady={pagesReady}
+      readerPages={readerPages}
+      startPageIndex={leftPage - 1}
+      spreadMode={spreadMode}
+      zoom={zoom}
+      onZoomChange={setZoom}
+      onFlip={handleBookFlip}
+      onFlippingChange={setNavLocked}
+      bookRef={bookRef}
+      canGoPrev={canGoPrev}
+      canGoNext={canGoNext}
+      onPrev={() => changeSpread((p) => prevViewPage(p, spreadMode), { animate: true })}
+      onNext={() => changeSpread((p) => nextViewPage(p, totalPages, spreadMode), { animate: true })}
+    />
+  );
+
+  const fullscreenOverlay =
+    isFullscreen && fullscreenMounted
+      ? createPortal(
+          <div ref={fullscreenRef} className="reader-fullscreen">
+            <ReaderFullscreenNav from={from} onExitView={exitFullscreen} />
+            <p className="reader-fullscreen__meta">
+              {title} · {spreadMode === "single" ? "Page" : "Pages"} {leftPage}
+              {viewEnd !== leftPage ? `–${viewEnd}` : ""} of {totalPages}
+            </p>
+            <div className="reader-fullscreen__stage-area">{bookStage}</div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div className="reader-shell min-h-0 flex-1">
@@ -466,6 +583,14 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
               >
                 {spreadMode === "single" ? "Double Split" : "Single Split"}
               </button>
+              <button
+                type="button"
+                onClick={enterFullscreen}
+                disabled={!pagesReady}
+                className="reader-controls__button reader-controls__button--fullscreen"
+              >
+                Full Screen
+              </button>
               <label className="reader-controls__field">
                 Jump to
                 <select
@@ -533,60 +658,7 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
             </section>
           </aside>
 
-          <div className="reader-stage-area">
-            <div className="reader-stage w-full">
-              <PageTurnButton
-                direction="prev"
-                disabled={!canGoPrev}
-                onClick={() => changeSpread((p) => prevViewPage(p, spreadMode), { animate: true })}
-              />
-              <div className="reader-book min-w-0">
-                {!pagesReady ? (
-                  <p className="reader-flipbook-loading">Preparing book...</p>
-                ) : (
-                  <>
-                    <StPageFlipBook
-                      ref={bookRef}
-                      pages={readerPages}
-                      startPageIndex={startPageIndex}
-                      spreadMode={spreadMode}
-                      zoom={zoom}
-                      onZoomChange={setZoom}
-                      onFlip={handleBookFlip}
-                      onFlippingChange={setNavLocked}
-                    />
-                    <div className="reader-book__zoom-controls" role="group" aria-label="Zoom">
-                      <BookZoomButton
-                        label="Zoom out"
-                        disabled={zoom <= READER_ZOOM_MIN}
-                        onClick={() =>
-                          setZoom((value) => clampReaderZoom(value - READER_ZOOM_STEP))
-                        }
-                      >
-                        −
-                      </BookZoomButton>
-                      <BookZoomButton
-                        label="Zoom in"
-                        disabled={zoom >= READER_ZOOM_MAX}
-                        onClick={() =>
-                          setZoom((value) => clampReaderZoom(value + READER_ZOOM_STEP))
-                        }
-                      >
-                        +
-                      </BookZoomButton>
-                    </div>
-                  </>
-                )}
-              </div>
-              <PageTurnButton
-                direction="next"
-                disabled={!canGoNext}
-                onClick={() =>
-                  changeSpread((p) => nextViewPage(p, totalPages, spreadMode), { animate: true })
-                }
-              />
-            </div>
-          </div>
+          <div className="reader-stage-area">{!isFullscreen ? bookStage : null}</div>
 
           <ChapterNavStrip
             chapters={chapters}
@@ -603,6 +675,120 @@ export function BookReader({ documentId, initialPage = 1 }: BookReaderProps) {
           onClose={() => setShowFullSummary(false)}
         />
       ) : null}
+
+      {fullscreenOverlay}
+    </div>
+  );
+}
+
+function ReaderFullscreenNav({
+  from,
+  onExitView,
+}: {
+  from: "library" | "docket";
+  onExitView: () => void;
+}) {
+  const root =
+    from === "docket"
+      ? { label: "Docket", href: "/dashboard/docket" }
+      : { label: "Library", href: "/dashboard/library" };
+
+  return (
+    <nav aria-label="Breadcrumb" className="reader-fullscreen__nav">
+      <ol className="reader-fullscreen__crumbs">
+        <li>
+          <Link href={root.href} className="reader-fullscreen__crumb-link">
+            {root.label}
+          </Link>
+        </li>
+        <li className="reader-fullscreen__crumb-sep" aria-hidden>
+          /
+        </li>
+        <li>
+          <button type="button" onClick={onExitView} className="reader-fullscreen__crumb-button">
+            View
+          </button>
+        </li>
+        <li className="reader-fullscreen__crumb-sep" aria-hidden>
+          /
+        </li>
+        <li>
+          <span className="reader-fullscreen__crumb-current" aria-current="page">
+            Full Screen
+          </span>
+        </li>
+      </ol>
+    </nav>
+  );
+}
+
+function ReaderBookStage({
+  pagesReady,
+  readerPages,
+  startPageIndex,
+  spreadMode,
+  zoom,
+  onZoomChange,
+  onFlip,
+  onFlippingChange,
+  bookRef,
+  canGoPrev,
+  canGoNext,
+  onPrev,
+  onNext,
+}: {
+  pagesReady: boolean;
+  readerPages: Array<{ pageNumber: number; content: string }>;
+  startPageIndex: number;
+  spreadMode: ReaderSpreadMode;
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
+  onFlip: (pageIndex: number) => void;
+  onFlippingChange: (flipping: boolean) => void;
+  bookRef: React.RefObject<StPageFlipBookHandle | null>;
+  canGoPrev: boolean;
+  canGoNext: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="reader-stage w-full">
+      <PageTurnButton direction="prev" disabled={!canGoPrev} onClick={onPrev} />
+      <div className="reader-book min-w-0">
+        {!pagesReady ? (
+          <p className="reader-flipbook-loading">Preparing book...</p>
+        ) : (
+          <>
+            <StPageFlipBook
+              ref={bookRef}
+              pages={readerPages}
+              startPageIndex={startPageIndex}
+              spreadMode={spreadMode}
+              zoom={zoom}
+              onZoomChange={onZoomChange}
+              onFlip={onFlip}
+              onFlippingChange={onFlippingChange}
+            />
+            <div className="reader-book__zoom-controls" role="group" aria-label="Zoom">
+              <BookZoomButton
+                label="Zoom out"
+                disabled={zoom <= READER_ZOOM_MIN}
+                onClick={() => onZoomChange(clampReaderZoom(zoom - READER_ZOOM_STEP))}
+              >
+                −
+              </BookZoomButton>
+              <BookZoomButton
+                label="Zoom in"
+                disabled={zoom >= READER_ZOOM_MAX}
+                onClick={() => onZoomChange(clampReaderZoom(zoom + READER_ZOOM_STEP))}
+              >
+                +
+              </BookZoomButton>
+            </div>
+          </>
+        )}
+      </div>
+      <PageTurnButton direction="next" disabled={!canGoNext} onClick={onNext} />
     </div>
   );
 }

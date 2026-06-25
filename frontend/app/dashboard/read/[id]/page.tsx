@@ -32,7 +32,7 @@ function ReadContent({ documentId }: { documentId: string }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-2">
       <Breadcrumbs items={readBreadcrumbs(from)} />
-      <BookReader documentId={documentId} initialPage={initialPage} />
+      <BookReader documentId={documentId} initialPage={initialPage} from={from === "docket" ? "docket" : "library"} />
     </div>
   );
 }

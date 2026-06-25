@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -22,6 +23,7 @@ export interface StPageFlipBookHandle {
   turnToPage(pageIndex: number): void;
   flipToPage(pageIndex: number): void;
   getCurrentPageIndex(): number;
+  remeasure(): void;
 }
 
 interface StPageFlipBookProps {
@@ -124,23 +126,51 @@ export const StPageFlipBook = forwardRef<StPageFlipBookHandle, StPageFlipBookPro
     const spreadModeRef = useRef(spreadMode);
     spreadModeRef.current = spreadMode;
 
-    useImperativeHandle(ref, () => ({
-      flipNext() {
-        bookRef.current?.pageFlip()?.flipNext("bottom");
-      },
-      flipPrev() {
-        bookRef.current?.pageFlip()?.flipPrev("bottom");
-      },
-      turnToPage(pageIndex) {
-        bookRef.current?.pageFlip()?.turnToPage(pageIndex);
-      },
-      flipToPage(pageIndex) {
-        bookRef.current?.pageFlip()?.flip(pageIndex, "bottom");
-      },
-      getCurrentPageIndex() {
-        return bookRef.current?.pageFlip()?.getCurrentPageIndex() ?? 0;
-      },
-    }));
+    const remeasure = useCallback(() => {
+      const host = hostRef.current;
+      if (!host) {
+        return;
+      }
+
+      const next = measureHost(host, spreadModeRef.current);
+      if (!next) {
+        return;
+      }
+
+      setDims((current) => {
+        if (
+          current &&
+          current.pageWidth === next.pageWidth &&
+          current.pageHeight === next.pageHeight
+        ) {
+          return current;
+        }
+        return next;
+      });
+    }, []);
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        flipNext() {
+          bookRef.current?.pageFlip()?.flipNext("bottom");
+        },
+        flipPrev() {
+          bookRef.current?.pageFlip()?.flipPrev("bottom");
+        },
+        turnToPage(pageIndex) {
+          bookRef.current?.pageFlip()?.turnToPage(pageIndex);
+        },
+        flipToPage(pageIndex) {
+          bookRef.current?.pageFlip()?.flip(pageIndex, "bottom");
+        },
+        getCurrentPageIndex() {
+          return bookRef.current?.pageFlip()?.getCurrentPageIndex() ?? 0;
+        },
+        remeasure,
+      }),
+      [remeasure],
+    );
 
     useEffect(() => {
       const host = hostRef.current;
@@ -238,29 +268,6 @@ export const StPageFlipBook = forwardRef<StPageFlipBookHandle, StPageFlipBookPro
 
       prevEffectiveScaleRef.current = effectiveScale;
     }, [effectiveScale]);
-
-    const remeasure = () => {
-      const host = hostRef.current;
-      if (!host) {
-        return;
-      }
-
-      const next = measureHost(host, spreadModeRef.current);
-      if (!next) {
-        return;
-      }
-
-      setDims((current) => {
-        if (
-          current &&
-          current.pageWidth === next.pageWidth &&
-          current.pageHeight === next.pageHeight
-        ) {
-          return current;
-        }
-        return next;
-      });
-    };
 
     const handleInit = () => {
       requestAnimationFrame(() => {

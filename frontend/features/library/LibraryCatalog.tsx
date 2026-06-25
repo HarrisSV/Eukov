@@ -137,12 +137,9 @@ export function LibraryCatalog() {
             role="region"
             aria-label="Recommended books"
           >
-            <div className="flex gap-4">
+            <div className="flex gap-3">
               {recommendedBooks.map((book) => (
-                <div
-                  key={`rec-${book.id}`}
-                  className="w-full shrink-0 md:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)]"
-                >
+                <div key={`rec-${book.id}`} className="w-40 shrink-0 sm:w-44">
                   <LibraryCard
                     book={book}
                     continueReading={continueReadingIds.has(book.id)}
@@ -166,7 +163,7 @@ export function LibraryCatalog() {
           </p>
         )}
         <div className="max-h-[calc(100vh-22rem)] overflow-y-auto pr-1">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {books.map((book) => (
               <LibraryCard
                 key={book.id}
@@ -203,7 +200,7 @@ function LibraryCard({
   onPreview: () => void;
 }) {
   return (
-    <article className="group portal-card flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-background transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-warm/30">
+    <article className="group portal-card flex h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-background transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-warm/30">
       {book.coverUrl ? (
         <div className="relative aspect-[2/3] w-full overflow-hidden bg-surface">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -217,49 +214,51 @@ function LibraryCard({
         </div>
       ) : (
         <div className="flex aspect-[2/3] w-full items-center justify-center bg-surface">
-          <span className="font-serif text-4xl text-muted/40">E</span>
+          <span className="font-serif text-2xl text-muted/40">E</span>
         </div>
       )}
-      <div className="flex flex-1 flex-col gap-2.5 p-4">
-        <h3 className="font-serif text-lg font-semibold leading-snug text-foreground">{book.title}</h3>
+      <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+        <h3 className="line-clamp-2 font-serif text-sm font-semibold leading-snug text-foreground">
+          {book.title}
+        </h3>
         {book.authorName ? (
-          <p className="text-sm text-muted">by {book.authorName}</p>
+          <p className="truncate text-xs text-muted">by {book.authorName}</p>
         ) : null}
         {book.genreName && (
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-accent-warm">
+          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-accent-warm">
             {formatGenreLabel(book.genreName)}
           </p>
         )}
         {book.summary && (
-          <p className="line-clamp-3 text-sm leading-relaxed text-muted">{book.summary}</p>
+          <p className="line-clamp-2 text-xs leading-relaxed text-muted">{book.summary}</p>
         )}
         {"reason" in book && book.reason ? (
-          <p className="rounded-lg bg-accent-soft px-2.5 py-1.5 text-xs text-accent-warm">
+          <p className="rounded-md bg-accent-soft px-2 py-1 text-[10px] leading-snug text-accent-warm">
             AI pick · {book.reason}
           </p>
         ) : null}
         {book.tags.length > 0 && (
-          <ul className="flex flex-wrap gap-1.5">
-            {book.tags.map((tag) => (
+          <ul className="flex flex-wrap gap-1">
+            {book.tags.slice(0, 2).map((tag) => (
               <li
                 key={tag}
-                className="rounded-full border border-border/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted"
+                className="rounded-full border border-border/80 px-1.5 py-px text-[9px] font-medium uppercase tracking-wide text-muted"
               >
                 {tag}
               </li>
             ))}
           </ul>
         )}
-        <div className="mt-auto flex flex-col gap-2 pt-2">
+        <div className="mt-auto flex flex-col gap-1 pt-1">
           <button
             type="button"
             onClick={onPreview}
-            className="portal-btn-primary w-full px-3 py-2.5 text-sm"
+            className="portal-btn-primary w-full px-2 py-1.5 text-xs"
           >
-            Preview · Read more
+            Preview
           </button>
           {continueReading ? (
-            <p className="text-center text-xs font-medium uppercase tracking-[0.12em] text-accent-warm">
+            <p className="text-center text-[10px] font-medium uppercase tracking-[0.1em] text-accent-warm">
               Continue reading
             </p>
           ) : null}

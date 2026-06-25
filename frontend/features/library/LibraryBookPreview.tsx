@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { api, type LibraryBook } from "@/services/api";
@@ -16,6 +17,30 @@ export function LibraryBookPreview({ book, onClose }: LibraryBookPreviewProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [showSummary, setShowSummary] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mounted]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   const previewQuery = useQuery({
     queryKey: ["book-preview", book.id],
@@ -45,14 +70,22 @@ export function LibraryBookPreview({ book, onClose }: LibraryBookPreviewProps) {
 
   const preview = previewQuery.data;
 
-  return (
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="preview-title"
+      onClick={onClose}
     >
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-4 overflow-y-auto border-2 border-foreground bg-background p-6 shadow-lg">
+      <div
+        className="portal-card flex max-h-[min(90vh,calc(100dvh-2rem))] w-full max-w-2xl flex-col gap-4 overflow-y-auto rounded-2xl border border-border/70 bg-background p-6 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-4">
           <div className="flex gap-4">
             {book.coverUrl ? (
@@ -176,6 +209,7 @@ export function LibraryBookPreview({ book, onClose }: LibraryBookPreviewProps) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
