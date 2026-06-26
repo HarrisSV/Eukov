@@ -862,6 +862,17 @@ mark.reader-search-highlight {
   -webkit-box-decoration-break: clone;
 }
 
+.reader-page__text-inner mark.reader-tts-highlight,
+mark.reader-tts-highlight {
+  background-color: #facc15 !important;
+  color: inherit !important;
+  padding: 0 0.1em;
+  border-radius: 0.125rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition: background-color 120ms ease;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

@@ -1,6 +1,7 @@
 import {
   htmlToPlainText,
   leftPageForTarget,
+  viewEndPage,
   type ReaderSpreadMode,
 } from "@/features/reader/page-content";
 
@@ -126,6 +127,25 @@ function getPageTextContainers(pageNumber: number): HTMLElement[] {
   );
 }
 
+export function getVisiblePageNumbers(
+  currentPage: number,
+  totalPages: number,
+  mode: ReaderSpreadMode,
+): number[] {
+  const end = viewEndPage(currentPage, totalPages, mode);
+  const pages: number[] = [];
+  for (let pageNumber = currentPage; pageNumber <= end; pageNumber += 1) {
+    pages.push(pageNumber);
+  }
+  return pages;
+}
+
+function pageHasSearchHighlights(pageNumber: number): boolean {
+  return getPageTextContainers(pageNumber).some(
+    (container) => container.querySelector("mark.reader-search-highlight") !== null,
+  );
+}
+
 export function scheduleSearchHighlights(
   pageNumbers: number[],
   query: string,
@@ -136,7 +156,7 @@ export function scheduleSearchHighlights(
     return () => undefined;
   }
 
-  const attempts = options?.attempts ?? 12;
+  const attempts = options?.attempts ?? 16;
   const intervalMs = options?.intervalMs ?? 100;
   let attempt = 0;
   let rafId = 0;
@@ -144,8 +164,9 @@ export function scheduleSearchHighlights(
 
   const tick = () => {
     attempt += 1;
-    const highlighted = highlightSearchOnPages(pageNumbers, normalized);
-    if (highlighted > 0 || attempt >= attempts) {
+    highlightSearchOnPages(pageNumbers, normalized);
+    const complete = pageNumbers.every((pageNumber) => pageHasSearchHighlights(pageNumber));
+    if (complete || attempt >= attempts) {
       return;
     }
     timeoutId = window.setTimeout(tick, intervalMs);
@@ -161,6 +182,72 @@ export function scheduleSearchHighlights(
   };
 }
 
+interface TextSegment {
+  node: Text;
+  start: number;
+  end: number;
+}
+
+function buildTextIndex(root: HTMLElement): { text: string; segments: TextSegment[] } {
+  const segments: TextSegment[] = [];
+  let text = "";
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    const content = node.textContent ?? "";
+    if (!content) {
+      continue;
+    }
+    segments.push({ node, start: text.length, end: text.length + content.length });
+    text += content;
+  }
+
+  return { text, segments };
+}
+
+function locateTextOffset(
+  segments: TextSegment[],
+  offset: number,
+): { node: Text; nodeOffset: number } | null {
+  if (segments.length === 0) {
+    return null;
+  }
+
+  for (const segment of segments) {
+    if (offset >= segment.start && offset < segment.end) {
+      return { node: segment.node, nodeOffset: offset - segment.start };
+    }
+  }
+
+  const last = segments[segments.length - 1];
+  const lastLength = last.node.textContent?.length ?? 0;
+  return { node: last.node, nodeOffset: lastLength };
+}
+
+function wrapHighlightRange(segments: TextSegment[], start: number, end: number) {
+  const startPos = locateTextOffset(segments, start);
+  const endPos = locateTextOffset(segments, Math.max(start, end - 1));
+  if (!startPos || !endPos) {
+    return;
+  }
+
+  const range = document.createRange();
+  range.setStart(startPos.node, startPos.nodeOffset);
+  range.setEnd(endPos.node, endPos.nodeOffset + 1);
+
+  const mark = document.createElement("mark");
+  mark.className = "reader-search-highlight";
+
+  try {
+    range.surroundContents(mark);
+  } catch {
+    const contents = range.extractContents();
+    mark.appendChild(contents);
+    range.insertNode(mark);
+  }
+}
+
 export function highlightSearchQuery(root: HTMLElement, query: string): number {
   clearSearchHighlights(root);
   const normalized = query.trim();
@@ -169,67 +256,30 @@ export function highlightSearchQuery(root: HTMLElement, query: string): number {
   }
 
   const lowerQuery = normalized.toLowerCase();
-  let count = 0;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-
-  const textNodes: Text[] = [];
-  while (walker.nextNode()) {
-    const node = walker.currentNode;
-    if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-      textNodes.push(node as Text);
-    }
+  const { text, segments } = buildTextIndex(root);
+  if (!text || segments.length === 0) {
+    return 0;
   }
 
-  for (const textNode of textNodes) {
-    const text = textNode.textContent ?? "";
-    const lower = text.toLowerCase();
-    let position = 0;
-    const fragments: Array<string | HTMLElement> = [];
-    let lastEnd = 0;
+  const lower = text.toLowerCase();
+  const matches: Array<{ start: number; end: number }> = [];
+  let position = 0;
 
-    while (position < lower.length) {
-      const found = lower.indexOf(lowerQuery, position);
-      if (found === -1) {
-        break;
-      }
-
-      if (found > lastEnd) {
-        fragments.push(text.slice(lastEnd, found));
-      }
-
-      const mark = document.createElement("mark");
-      mark.className = "reader-search-highlight";
-      mark.textContent = text.slice(found, found + normalized.length);
-      fragments.push(mark);
-      count += 1;
-      lastEnd = found + normalized.length;
-      position = found + 1;
+  while (position < lower.length) {
+    const found = lower.indexOf(lowerQuery, position);
+    if (found === -1) {
+      break;
     }
-
-    if (lastEnd === 0) {
-      continue;
-    }
-
-    if (lastEnd < text.length) {
-      fragments.push(text.slice(lastEnd));
-    }
-
-    const parent = textNode.parentNode;
-    if (!parent) {
-      continue;
-    }
-
-    for (const fragment of fragments) {
-      if (typeof fragment === "string") {
-        parent.insertBefore(document.createTextNode(fragment), textNode);
-      } else {
-        parent.insertBefore(fragment, textNode);
-      }
-    }
-    parent.removeChild(textNode);
+    matches.push({ start: found, end: found + normalized.length });
+    position = found + 1;
   }
 
-  return count;
+  for (let index = matches.length - 1; index >= 0; index -= 1) {
+    const match = matches[index];
+    wrapHighlightRange(segments, match.start, match.end);
+  }
+
+  return matches.length;
 }
 
 export function clearSearchHighlights(root: HTMLElement) {

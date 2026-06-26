@@ -12,6 +12,7 @@ import {
 import { PublishDialog } from "@/features/docket/PublishDialog";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { LoadingBuffer } from "@/components/ui/LoadingBuffer";
+import { QwenAIWorkingOverlay } from "@/components/ui/QwenAIWorkingOverlay";
 import {
   clearDraftCheckpoint,
   migrateDraftCheckpoint,
@@ -406,6 +407,11 @@ export function DocketEditorPage({ documentId }: DocketEditorPageProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <QwenAIWorkingOverlay
+        open={aiChecking}
+        title="Running AI check…"
+        detail="Qwen is reviewing grammar, phrasing, and clarity in your manuscript."
+      />
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <Breadcrumbs
           items={[

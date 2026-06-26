@@ -7,8 +7,6 @@ import { createPortal } from "react-dom";
 import { api, ApiError } from "@/services/api";
 import {
   formatViewLabel,
-  htmlToPlainText,
-  isHtmlContent,
   leftPageForTarget,
   nextViewPage,
   prevViewPage,
@@ -17,6 +15,20 @@ import {
   viewEndPage,
   viewPageOptions,
 } from "@/features/reader/page-content";
+import {
+  buildSpeechScript,
+  localCharIndex,
+  nextSegment,
+  pageForCharIndex,
+  resumeCharIndexForNextWord,
+  segmentForPage,
+  wordRangeAt,
+  type SpeechScript,
+} from "@/features/reader/reader-speech";
+import {
+  clearAllTtsHighlights,
+  highlightWordOnPage,
+} from "@/features/reader/reader-speech-highlight";
 import { BookSearchPanel } from "@/features/reader/BookSearchPanel";
 import { ChapterNavStrip } from "@/features/reader/ChapterNavStrip";
 import {
@@ -79,6 +91,8 @@ export function BookReader({ documentId, initialPage = 1, from = "library" }: Bo
   const bookRef = useRef<StPageFlipBookHandle | null>(null);
   const [leftPage, setLeftPage] = useState(() => Math.max(1, initialPage));
   const [rate, setRate] = useState(1);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceName, setVoiceName] = useState("");
   const [playing, setPlaying] = useState(false);
   const [bookmark, setBookmark] = useState<ReadingBookmark | null>(null);
   const [navLocked, setNavLocked] = useState(false);
@@ -89,6 +103,14 @@ export function BookReader({ documentId, initialPage = 1, from = "library" }: Bo
   const [fullscreenMounted, setFullscreenMounted] = useState(false);
   const fullscreenRef = useRef<HTMLDivElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const playingRef = useRef(false);
+  const speechScriptRef = useRef<SpeechScript>({ text: "", segments: [] });
+  const speechOffsetRef = useRef(0);
+  const resumeCharIndexRef = useRef(0);
+  const spreadModeRef = useRef(spreadMode);
+  const totalPagesRef = useRef(1);
+  const leftPageRef = useRef(leftPage);
+  const rightPageRef = useRef<number | null>(null);
 
   const metaQuery = useQuery({
     queryKey: ["document-page", documentId, 1],
@@ -150,13 +172,79 @@ export function BookReader({ documentId, initialPage = 1, from = "library" }: Bo
 
   const rightPage = spreadMode === "double" ? rightPageNumber(leftPage, totalPages) : null;
 
-  const stopSpeech = useCallback(() => {
+  useEffect(() => {
+    spreadModeRef.current = spreadMode;
+  }, [spreadMode]);
+
+  useEffect(() => {
+    totalPagesRef.current = totalPages;
+  }, [totalPages]);
+
+  useEffect(() => {
+    leftPageRef.current = leftPage;
+  }, [leftPage]);
+
+  useEffect(() => {
+    rightPageRef.current = rightPage;
+  }, [rightPage]);
+
+  const cancelSpeech = useCallback(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
-    setPlaying(false);
     utteranceRef.current = null;
   }, []);
+
+  const stopSpeech = useCallback(() => {
+    cancelSpeech();
+    setPlaying(false);
+    clearAllTtsHighlights();
+    speechScriptRef.current = { text: "", segments: [] };
+    speechOffsetRef.current = 0;
+    resumeCharIndexRef.current = 0;
+  }, [cancelSpeech]);
+
+  useEffect(() => {
+    playingRef.current = playing;
+  }, [playing]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      return;
+    }
+    const synth = window.speechSynthesis;
+    const loadVoices = () => {
+      const available = synth.getVoices();
+      if (available.length === 0) {
+        return;
+      }
+      setVoices(available);
+      setVoiceName((current) => {
+        if (current && available.some((voice) => voice.name === current)) {
+          return current;
+        }
+        const preferred =
+          available.find((voice) => voice.lang.startsWith("en") && voice.default) ??
+          available.find((voice) => voice.lang.startsWith("en")) ??
+          available[0];
+        return preferred?.name ?? "";
+      });
+    };
+    loadVoices();
+    synth.addEventListener("voiceschanged", loadVoices);
+    return () => synth.removeEventListener("voiceschanged", loadVoices);
+  }, []);
+
+  const sortedVoices = useMemo(() => {
+    return [...voices].sort((a, b) => {
+      const aEnglish = a.lang.startsWith("en") ? 0 : 1;
+      const bEnglish = b.lang.startsWith("en") ? 0 : 1;
+      if (aEnglish !== bEnglish) {
+        return aEnglish - bEnglish;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [voices]);
 
   const syncTextRefs = useCallback(() => {
     if (typeof document === "undefined") {
@@ -175,12 +263,15 @@ export function BookReader({ documentId, initialPage = 1, from = "library" }: Bo
   }, [leftPage, rightPage]);
 
   const changeSpread = useCallback(
-    (next: number | ((current: number) => number), options?: { animate?: boolean }) => {
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
+    (next: number | ((current: number) => number), options?: { animate?: boolean; keepSpeech?: boolean }) => {
+      if (!options?.keepSpeech) {
+        cancelSpeech();
+        setPlaying(false);
+        clearAllTtsHighlights();
+        speechScriptRef.current = { text: "", segments: [] };
+        speechOffsetRef.current = 0;
+        resumeCharIndexRef.current = 0;
       }
-      utteranceRef.current = null;
-      setPlaying(false);
 
       const targetLeft = typeof next === "function" ? next(leftPage) : next;
       if (targetLeft === leftPage) {
@@ -202,7 +293,7 @@ export function BookReader({ documentId, initialPage = 1, from = "library" }: Bo
       setNavLocked(true);
       bookRef.current?.flipToPage(targetIndex);
     },
-    [leftPage],
+    [cancelSpeech, leftPage],
   );
 
   const handleBookFlip = useCallback(
@@ -216,25 +307,164 @@ export function BookReader({ documentId, initialPage = 1, from = "library" }: Bo
     [progressMutation, syncTextRefs],
   );
 
-  const speakSpread = useCallback(() => {
-    const leftContent = pages.find((page) => page.pageNumber === leftPage)?.content ?? "";
-    const rightContent = rightPage
-      ? (pages.find((page) => page.pageNumber === rightPage)?.content ?? "")
-      : "";
-    const text = [htmlToPlainText(leftContent), htmlToPlainText(rightContent)]
-      .filter(Boolean)
-      .join("\n\n");
-    if (!text || typeof window === "undefined" || !window.speechSynthesis) {
-      return;
-    }
-    stopSpeech();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = rate;
-    utterance.onend = () => setPlaying(false);
-    utteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-    setPlaying(true);
-  }, [leftPage, pages, rate, rightPage, stopSpeech]);
+  const turnToPageForSpeech = useCallback(
+    (pageNumber: number) => {
+      const targetLeft = leftPageForTarget(
+        pageNumber,
+        totalPagesRef.current,
+        spreadModeRef.current,
+      );
+      if (targetLeft === leftPageRef.current) {
+        return;
+      }
+
+      const targetIndex = targetLeft - 1;
+      bookRef.current?.turnToPage(targetIndex);
+      setLeftPage(targetLeft);
+      leftPageRef.current = targetLeft;
+      rightPageRef.current =
+        spreadModeRef.current === "double"
+          ? rightPageNumber(targetLeft, totalPagesRef.current)
+          : null;
+      progressMutation.mutate(targetLeft);
+    },
+    [progressMutation],
+  );
+
+  const highlightSpeechWord = useCallback(
+    (globalCharIndex: number) => {
+      const script = speechScriptRef.current;
+      if (!script.text) {
+        return;
+      }
+
+      resumeCharIndexRef.current = globalCharIndex;
+
+      const pageNumber = pageForCharIndex(script.segments, globalCharIndex);
+      const segment = segmentForPage(script.segments, pageNumber);
+      if (!segment) {
+        return;
+      }
+
+      const localStart = localCharIndex(segment, globalCharIndex);
+      const { start, end } = wordRangeAt(segment.text, localStart);
+      highlightWordOnPage(pageNumber, start, end);
+    },
+    [],
+  );
+
+  const speakFromGlobalIndex = useCallback(
+    (fromCharIndex: number, options?: { rate?: number; voiceName?: string }) => {
+      const script = speechScriptRef.current;
+      if (!script.text || typeof window === "undefined" || !window.speechSynthesis) {
+        return;
+      }
+
+      const globalStart = Math.min(Math.max(0, fromCharIndex), script.text.length);
+      const pageNumber = pageForCharIndex(script.segments, globalStart);
+      const segment = segmentForPage(script.segments, pageNumber);
+      if (!segment) {
+        stopSpeech();
+        return;
+      }
+
+      speechOffsetRef.current = globalStart;
+      resumeCharIndexRef.current = globalStart;
+
+      const localStart = globalStart - segment.startChar;
+      const pageSlice = segment.text.slice(localStart);
+      if (!pageSlice.trim()) {
+        const upcoming = nextSegment(script.segments, pageNumber);
+        if (upcoming) {
+          speakFromGlobalIndex(upcoming.startChar, options);
+        } else {
+          stopSpeech();
+        }
+        return;
+      }
+
+      turnToPageForSpeech(pageNumber);
+      cancelSpeech();
+      clearAllTtsHighlights();
+
+      const speechRate = options?.rate ?? rate;
+      const speechVoiceName = options?.voiceName ?? voiceName;
+      const utterance = new SpeechSynthesisUtterance(pageSlice);
+      utterance.rate = speechRate;
+
+      const voice = voices.find((entry) => entry.name === speechVoiceName);
+      if (voice) {
+        utterance.voice = voice;
+      }
+
+      const segmentBase = segment.startChar + localStart;
+
+      utterance.onboundary = (event) => {
+        if (event.name === "word") {
+          highlightSpeechWord(segmentBase + event.charIndex);
+        }
+      };
+
+      utterance.onend = () => {
+        clearAllTtsHighlights();
+        const upcoming = nextSegment(script.segments, pageNumber);
+        if (upcoming) {
+          speakFromGlobalIndex(upcoming.startChar, { rate: speechRate, voiceName: speechVoiceName });
+          return;
+        }
+        setPlaying(false);
+        utteranceRef.current = null;
+      };
+
+      utteranceRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+      setPlaying(true);
+    },
+    [
+      cancelSpeech,
+      highlightSpeechWord,
+      rate,
+      stopSpeech,
+      turnToPageForSpeech,
+      voiceName,
+      voices,
+    ],
+  );
+
+  const beginSpeech = useCallback(() => {
+    speechScriptRef.current = buildSpeechScript(pages, leftPage);
+    speakFromGlobalIndex(0);
+  }, [leftPage, pages, speakFromGlobalIndex]);
+
+  const handleRateChange = useCallback(
+    (newRate: number) => {
+      setRate(newRate);
+      if (!playingRef.current) {
+        return;
+      }
+      const resumeFrom = resumeCharIndexForNextWord(
+        speechScriptRef.current.text,
+        resumeCharIndexRef.current,
+      );
+      speakFromGlobalIndex(resumeFrom, { rate: newRate, voiceName });
+    },
+    [speakFromGlobalIndex, voiceName],
+  );
+
+  const handleVoiceChange = useCallback(
+    (newVoiceName: string) => {
+      setVoiceName(newVoiceName);
+      if (!playingRef.current) {
+        return;
+      }
+      const resumeFrom = resumeCharIndexForNextWord(
+        speechScriptRef.current.text,
+        resumeCharIndexRef.current,
+      );
+      speakFromGlobalIndex(resumeFrom, { rate, voiceName: newVoiceName });
+    },
+    [rate, speakFromGlobalIndex],
+  );
 
   useEffect(() => {
     spreadHydratedRef.current = false;
@@ -351,11 +581,10 @@ export function BookReader({ documentId, initialPage = 1, from = "library" }: Bo
 
   useEffect(
     () => () => {
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
+      cancelSpeech();
+      clearAllTtsHighlights();
     },
-    [],
+    [cancelSpeech],
   );
 
   useEffect(() => {
@@ -611,7 +840,7 @@ export function BookReader({ documentId, initialPage = 1, from = "library" }: Bo
             <section className="reader-audio" aria-label="Audio reader">
               <span className="reader-audio__label">Audio reader</span>
               {!playing ? (
-                <button type="button" onClick={speakSpread} className="reader-controls__button">
+                <button type="button" onClick={beginSpeech} className="reader-controls__button">
                   Play
                 </button>
               ) : (
@@ -623,32 +852,28 @@ export function BookReader({ documentId, initialPage = 1, from = "library" }: Bo
                 Speed
                 <select
                   value={rate}
-                  onChange={(e) => setRate(Number(e.target.value))}
+                  onChange={(e) => handleRateChange(Number(e.target.value))}
                   className="reader-controls__select"
                   aria-label="Speech rate"
                 >
+                  <option value={0.5}>0.5×</option>
                   <option value={0.75}>0.75×</option>
                   <option value={1}>1×</option>
                   <option value={1.25}>1.25×</option>
                   <option value={1.5}>1.5×</option>
                 </select>
               </label>
-              {typeof window !== "undefined" && window.speechSynthesis && (
+              {sortedVoices.length > 0 && (
                 <label className="reader-controls__field">
                   Voice
                   <select
+                    value={voiceName}
+                    onChange={(e) => handleVoiceChange(e.target.value)}
                     className="reader-controls__select max-w-[12rem]"
                     aria-label="Voice selection"
-                    onChange={(e) => {
-                      const voices = window.speechSynthesis.getVoices();
-                      const voice = voices.find((v) => v.name === e.target.value);
-                      if (utteranceRef.current && voice) {
-                        utteranceRef.current.voice = voice;
-                      }
-                    }}
                   >
-                    {window.speechSynthesis.getVoices().map((voice) => (
-                      <option key={voice.name} value={voice.name}>
+                    {sortedVoices.map((voice) => (
+                      <option key={`${voice.name}-${voice.lang}`} value={voice.name}>
                         {voice.name}
                       </option>
                     ))}

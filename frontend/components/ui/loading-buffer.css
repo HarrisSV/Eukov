@@ -5,24 +5,49 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
+  gap: 1.25rem;
   padding: 2rem 1.5rem;
   text-align: center;
 }
 
+.loading-buffer--qwen {
+  min-height: 18rem;
+  gap: 1rem;
+}
+
+.loading-buffer__logo-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 5.5rem;
+  height: 5.5rem;
+}
+
+.loading-buffer__logo {
+  width: 4rem;
+  height: 4rem;
+  animation: loading-buffer-breathe 2.2s ease-in-out infinite;
+}
+
 .loading-buffer__track {
+  position: relative;
   width: min(100%, 20rem);
-  height: 0.375rem;
+  height: 0.4rem;
   overflow: hidden;
-  border: 1px solid var(--border);
-  background: var(--background);
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 10%, transparent);
 }
 
 .loading-buffer__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
   width: 40%;
   height: 100%;
-  background: var(--foreground);
-  animation: loading-buffer-slide 1.2s ease-in-out infinite;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6c4dff, #4f8cff, #2ed0c7);
+  animation: loading-buffer-slide 1.35s ease-in-out infinite;
+  box-shadow: 0 0 12px rgb(79 140 255 / 0.35);
 }
 
 .loading-buffer__title {
@@ -33,6 +58,11 @@
   color: var(--foreground);
 }
 
+.loading-buffer--qwen .loading-buffer__title {
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+}
+
 .loading-buffer__detail {
   margin: 0;
   max-width: 28rem;
@@ -41,11 +71,30 @@
   color: var(--muted);
 }
 
+.loading-buffer__eyebrow {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--accent-warm, #b87333) 88%, var(--foreground));
+}
+
 @keyframes loading-buffer-slide {
   0% {
     transform: translateX(-120%);
   }
   100% {
     transform: translateX(320%);
+  }
+}
+
+@keyframes loading-buffer-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
   }
 }

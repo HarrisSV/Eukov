@@ -29,6 +29,33 @@ function ChevronDownIcon({ className }: { className?: string }) {
   );
 }
 
+function CheckIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M20 6 9 17l-5-5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.75" />
+      <path
+        d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+    </svg>
+  );
+}
+
 function AuditLogIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -60,6 +87,7 @@ function auditLogSummary(action: string): string {
 export function SuperAdminPanel() {
   const queryClient = useQueryClient();
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
+  const [keyCopied, setKeyCopied] = useState(false);
   const [takedownDocId, setTakedownDocId] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [takedownResult, setTakedownResult] = useState<string | null>(null);
@@ -120,6 +148,20 @@ export function SuperAdminPanel() {
     void auditQuery.refetch();
   }
 
+  async function copyGeneratedKey() {
+    if (!generatedKey) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(generatedKey);
+      setKeyCopied(true);
+      window.setTimeout(() => setKeyCopied(false), 2000);
+    } catch {
+      setKeyCopied(false);
+    }
+  }
+
   return (
     <>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -137,9 +179,31 @@ export function SuperAdminPanel() {
             {generateMutation.isPending ? "Generating..." : "Generate Key"}
           </button>
           {generatedKey ? (
-            <p className="mt-4 break-all rounded-xl border border-border bg-surface px-3 py-3 font-mono text-xs text-foreground">
-              {generatedKey}
-            </p>
+            <div className="mt-4 flex items-start gap-2 rounded-xl border border-border bg-surface px-3 py-3">
+              <p className="min-w-0 flex-1 break-all font-mono text-xs text-foreground">
+                {generatedKey}
+              </p>
+              <div className="flex shrink-0 flex-col items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void copyGeneratedKey()}
+                  aria-label={keyCopied ? "Access key copied" : "Copy access key"}
+                  title={keyCopied ? "Copied" : "Copy to clipboard"}
+                  className={`rounded-lg p-2 transition-colors ${
+                    keyCopied
+                      ? "bg-accent/10 text-accent"
+                      : "text-muted hover:bg-background hover:text-foreground"
+                  }`}
+                >
+                  {keyCopied ? <CheckIcon /> : <CopyIcon />}
+                </button>
+                {keyCopied ? (
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-accent">
+                    Copied
+                  </span>
+                ) : null}
+              </div>
+            </div>
           ) : null}
         </Card>
 

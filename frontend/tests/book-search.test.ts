@@ -8,6 +8,8 @@ import {
 import {
   buildBookWordIndex,
   getUniquePagesWithMatches,
+  getVisiblePageNumbers,
+  highlightSearchQuery,
   resolveSearchNavigationPage,
   searchBookPages,
   suggestBookWords,
@@ -82,6 +84,39 @@ describe("getUniquePagesWithMatches", () => {
     );
 
     expect(getUniquePagesWithMatches(matches)).toEqual([1, 2]);
+  });
+});
+
+describe("getVisiblePageNumbers", () => {
+  it("returns only the current page in single-page mode", () => {
+    expect(getVisiblePageNumbers(2, 10, "single")).toEqual([2]);
+  });
+
+  it("returns both pages in a spread for double-page mode", () => {
+    expect(getVisiblePageNumbers(1, 10, "double")).toEqual([1, 2]);
+  });
+});
+
+describe("highlightSearchQuery", () => {
+  it("highlights matches that span multiple inline elements", () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<p>The Project <strong>Guten</strong>berg eBook</p>";
+
+    const count = highlightSearchQuery(root, "Gutenberg");
+
+    expect(count).toBe(1);
+    expect(root.querySelectorAll("mark.reader-search-highlight")).toHaveLength(1);
+    expect(root.querySelector("mark.reader-search-highlight")?.textContent).toBe("Gutenberg");
+  });
+
+  it("highlights every match in the page text", () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<p>Gutenberg license for Gutenberg readers</p>";
+
+    const count = highlightSearchQuery(root, "Gutenberg");
+
+    expect(count).toBe(2);
+    expect(root.querySelectorAll("mark.reader-search-highlight")).toHaveLength(2);
   });
 });
 

@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { api, type LibraryBook } from "@/services/api";
+import { QwenAIWorkingOverlay } from "@/components/ui/QwenAIWorkingOverlay";
 import { resolveReadingResumePage } from "@/lib/reading-bookmark";
 
 interface LibraryBookPreviewProps {
@@ -75,7 +76,13 @@ export function LibraryBookPreview({ book, onClose }: LibraryBookPreviewProps) {
   }
 
   return createPortal(
-    <div
+    <>
+      <QwenAIWorkingOverlay
+        open={showSummary && summaryQuery.isPending}
+        title="Generating quick summary…"
+        detail="Qwen is reading the book to craft a concise summary for you."
+      />
+      <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
@@ -136,9 +143,6 @@ export function LibraryBookPreview({ book, onClose }: LibraryBookPreviewProps) {
                 aria-label="Quick summary"
               >
                 <h3 className="text-sm font-bold uppercase tracking-wide">Quick summary</h3>
-                {summaryQuery.isLoading && (
-                  <p className="mt-2 text-sm text-muted">Generating summary…</p>
-                )}
                 {summaryQuery.isError && (
                   <p className="mt-2 text-sm text-danger" role="alert">
                     Could not generate summary right now.
@@ -209,7 +213,8 @@ export function LibraryBookPreview({ book, onClose }: LibraryBookPreviewProps) {
           </>
         )}
       </div>
-    </div>,
+    </div>
+    </>,
     document.body,
   );
 }

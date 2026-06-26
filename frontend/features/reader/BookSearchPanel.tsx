@@ -7,6 +7,7 @@ import {
   buildBookWordIndex,
   clearSearchHighlightsOnPages,
   getUniquePagesWithMatches,
+  getVisiblePageNumbers,
   resolveSearchNavigationPage,
   scheduleSearchHighlights,
   searchBookPages,
@@ -99,13 +100,27 @@ export function BookSearchPanel({
     suggestionRefs.current[highlightIndex]?.scrollIntoView({ block: "nearest" });
   }, [highlightIndex, visibleSuggestions]);
 
+  const showSuggestions = open && query.trim().length > 0 && suggestions.length > 0;
+  const viewEnd = viewEndPage(currentPage, totalPages, spreadMode);
+  const visibleHighlightPages = useMemo(() => {
+    if (!activeQuery || matchingPages.length === 0) {
+      return [];
+    }
+    const visible = new Set(getVisiblePageNumbers(currentPage, totalPages, spreadMode));
+    return matchingPages.filter((pageNumber) => visible.has(pageNumber));
+  }, [activeQuery, currentPage, matchingPages, spreadMode, totalPages]);
+
   useEffect(() => {
-    if (!activeQuery || navLocked) {
+    if (!activeQuery || visibleHighlightPages.length === 0) {
       return;
     }
 
-    return scheduleSearchHighlights(matchingPages, activeQuery);
-  }, [activeQuery, currentPage, matchingPages, navLocked]);
+    if (navLocked) {
+      return;
+    }
+
+    return scheduleSearchHighlights(visibleHighlightPages, activeQuery);
+  }, [activeQuery, currentPage, navLocked, visibleHighlightPages]);
 
   useEffect(() => {
     return () => {
@@ -213,9 +228,6 @@ export function BookSearchPanel({
     setHighlightIndex(-1);
     runSearch(word);
   };
-
-  const showSuggestions = open && query.trim().length > 0 && suggestions.length > 0;
-  const viewEnd = viewEndPage(currentPage, totalPages, spreadMode);
 
   return (
     <section className="reader-search" aria-label="Search in book">

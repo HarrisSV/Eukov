@@ -103,7 +103,13 @@ describe("BookReader", () => {
       },
     }));
     Object.defineProperty(window, "speechSynthesis", {
-      value: { cancel: vi.fn(), speak: vi.fn(), getVoices: () => [] },
+      value: {
+        cancel: vi.fn(),
+        speak: vi.fn(),
+        getVoices: () => [],
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
       writable: true,
     });
     Object.defineProperty(window, "matchMedia", {

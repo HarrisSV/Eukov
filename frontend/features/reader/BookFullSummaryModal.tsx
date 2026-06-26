@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LoadingBuffer } from "@/components/ui/LoadingBuffer";
-import { QwenAILogo } from "@/components/ui/QwenAILogo";
+import { QwenAIWorkingOverlay } from "@/components/ui/QwenAIWorkingOverlay";
 import { api } from "@/services/api";
 
 interface BookFullSummaryModalProps {
@@ -55,7 +54,13 @@ export function BookFullSummaryModal({
   }
 
   return createPortal(
-    <div className="reader-full-summary-page" role="dialog" aria-modal="true" aria-labelledby="reader-full-summary-title">
+    <>
+      <QwenAIWorkingOverlay
+        open={summaryQuery.isPending}
+        title="Scanning the entire book…"
+        detail="Qwen is reading every word and figure to build your full summary."
+      />
+      <div className="reader-full-summary-page" role="dialog" aria-modal="true" aria-labelledby="reader-full-summary-title">
       <header className="reader-full-summary-page__header">
         <button
           type="button"
@@ -82,17 +87,6 @@ export function BookFullSummaryModal({
       </header>
 
       <div className="reader-full-summary-page__body">
-        {summaryQuery.isLoading ? (
-          <div className="reader-full-summary-page__loading">
-            <QwenAILogo className="reader-full-summary-page__logo" />
-            <LoadingBuffer
-              title="Scanning the entire book…"
-              detail="Qwen AI is reading every word and figure to build your full summary."
-              className="reader-full-summary-page__buffer"
-            />
-          </div>
-        ) : null}
-
         {summaryQuery.isError ? (
           <p className="reader-full-summary-page__error" role="alert">
             Could not generate the full summary right now. Try again in a moment.
@@ -107,7 +101,8 @@ export function BookFullSummaryModal({
           </article>
         ) : null}
       </div>
-    </div>,
+    </div>
+    </>,
     document.body,
   );
 }
