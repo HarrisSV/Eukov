@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { deriveCoverUrlFromReaderHtml } from "@/lib/book-cover";
 import { api, ApiError, formatGenreLabel, NetworkError } from "@/services/api";
 import type { DraftDocumentPayload } from "@/features/docket/DraftEditor";
 
@@ -39,6 +40,7 @@ export function PublishDialog({
       .filter(Boolean);
     try {
       const payload = await getPayload();
+      const coverUrl = deriveCoverUrlFromReaderHtml(payload.readerHtml, payload.content);
       await api.publishDocument(documentId, {
         genre,
         tags,
@@ -46,6 +48,7 @@ export function PublishDialog({
         content: payload.content,
         contentFormat: payload.contentFormat,
         readerHtml: payload.readerHtml,
+        coverUrl: coverUrl || undefined,
       });
       onPublished();
     } catch (err) {
@@ -72,6 +75,7 @@ export function PublishDialog({
         </h2>
         <p className="mt-2 text-sm text-muted">
           Genre and at least one keyword required. Content must be 200+ characters.
+          The first page of your manuscript becomes the library cover when published.
         </p>
 
         <div className="mt-4 flex flex-col gap-3">

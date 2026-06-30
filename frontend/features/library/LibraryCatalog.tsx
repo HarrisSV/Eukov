@@ -8,7 +8,9 @@ import {
   type LibraryBook,
   type LibraryQueryParams,
 } from "@/services/api";
+import { htmlToPlainText } from "@/features/reader/page-content";
 import { LibraryBookPreview } from "@/features/library/LibraryBookPreview";
+import { LibraryBookCover } from "@/features/library/LibraryBookCover";
 
 const SORT_OPTIONS: { value: LibraryQueryParams["sort"]; label: string }[] = [
   { value: "newest", label: "Newest" },
@@ -199,24 +201,21 @@ function LibraryCard({
   continueReading?: boolean;
   onPreview: () => void;
 }) {
+  const summaryText = book.summary ? htmlToPlainText(book.summary) : "";
+
   return (
     <article className="group portal-card flex h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-background transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-warm/30">
-      {book.coverUrl ? (
-        <div className="relative aspect-[2/3] w-full overflow-hidden bg-surface">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={book.coverUrl}
-            alt=""
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-            loading="lazy"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-        </div>
-      ) : (
-        <div className="flex aspect-[2/3] w-full items-center justify-center bg-surface">
-          <span className="font-serif text-2xl text-muted/40">E</span>
-        </div>
-      )}
+      <div className="relative aspect-[2/3] w-full overflow-hidden bg-surface">
+        <LibraryBookCover
+          coverUrl={book.coverUrl}
+          tags={book.tags}
+          title={book.title}
+          authorName={book.authorName}
+          genreName={book.genreName}
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+      </div>
       <div className="flex flex-1 flex-col gap-1.5 p-2.5">
         <h3 className="line-clamp-2 font-serif text-sm font-semibold leading-snug text-foreground">
           {book.title}
@@ -229,9 +228,9 @@ function LibraryCard({
             {formatGenreLabel(book.genreName)}
           </p>
         )}
-        {book.summary && (
-          <p className="line-clamp-2 text-xs leading-relaxed text-muted">{book.summary}</p>
-        )}
+        {summaryText ? (
+          <p className="line-clamp-2 text-xs leading-relaxed text-muted">{summaryText}</p>
+        ) : null}
         {"reason" in book && book.reason ? (
           <p className="rounded-md bg-accent-soft px-2 py-1 text-[10px] leading-snug text-accent-warm">
             AI pick · {book.reason}

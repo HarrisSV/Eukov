@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { api, type LibraryBook } from "@/services/api";
 import { QwenAIWorkingOverlay } from "@/components/ui/QwenAIWorkingOverlay";
+import { LibraryBookCover } from "@/features/library/LibraryBookCover";
 import { resolveReadingResumePage } from "@/lib/reading-bookmark";
 
 interface LibraryBookPreviewProps {
@@ -95,12 +96,16 @@ export function LibraryBookPreview({ book, onClose }: LibraryBookPreviewProps) {
       >
         <div className="flex items-start justify-between gap-4">
           <div className="flex gap-4">
-            {book.coverUrl ? (
-              <div className="h-28 w-20 shrink-0 overflow-hidden border border-foreground bg-surface">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={book.coverUrl} alt="" className="h-full w-full object-cover" />
-              </div>
-            ) : null}
+            <div className="h-28 w-20 shrink-0 overflow-hidden rounded-md border border-border/70 bg-surface">
+              <LibraryBookCover
+                coverUrl={book.coverUrl}
+                tags={book.tags}
+                title={book.title}
+                authorName={book.authorName}
+                genreName={book.genreName}
+                className="h-full w-full object-cover"
+              />
+            </div>
             <div>
               <h2 id="preview-title" className="text-2xl font-bold text-foreground">
                 {book.title}

@@ -56,7 +56,7 @@ func (s *LibraryService) List(ctx context.Context, params repository.LibrarySear
 			AuthorName:  row.AuthorName,
 			GenreID:     row.GenreID,
 			GenreName:   row.GenreName,
-			Summary:     row.Summary,
+			Summary:     DisplaySummary(row.Summary, 280),
 			CoverURL:    row.CoverURL,
 			Tags:        tagNames,
 			OpenCount:   row.OpenCount,

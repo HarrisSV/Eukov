@@ -122,6 +122,17 @@ function buildTags(book) {
   return [...tags].slice(0, 8);
 }
 
+function resolveGutenbergCoverUrl(book) {
+  const jpeg = book.formats?.["image/jpeg"];
+  if (jpeg) {
+    return jpeg;
+  }
+  if (book.id) {
+    return `https://www.gutenberg.org/cache/epub/${book.id}/pg${book.id}.cover.medium.jpg`;
+  }
+  return "";
+}
+
 async function api(method, path, token, body) {
   const response = await fetch(`${API_BASE}${path}`, {
     method,
@@ -241,7 +252,7 @@ async function publishBook(token, book, existingTitles) {
   }
 
   const author = book.authors?.[0]?.name ?? "Unknown";
-  const coverUrl = book.formats["image/jpeg"] ?? "";
+  const coverUrl = resolveGutenbergCoverUrl(book);
   let bodyHtml;
   try {
     bodyHtml = await fetchBookBody(book.formats, book.id);

@@ -1,0 +1,50 @@
+.library-page-cover {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #faf7f2;
+}
+
+.library-page-cover__sheet {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  box-sizing: border-box;
+  padding: 96px;
+  transform-origin: top center;
+  background: #ffffff;
+  color: #111111;
+  overflow: hidden;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #111111 8%, transparent);
+}
+
+.library-page-cover__sheet.tiptap {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.library-page-cover__sheet.tiptap p {
+  margin: 0 0 0.75em;
+}
+
+.library-page-cover__sheet.tiptap p:last-child {
+  margin-bottom: 0;
+}
+
+.library-page-cover__sheet.tiptap img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.75rem auto;
+}
+
+.library-page-cover__sheet.tiptap h1,
+.library-page-cover__sheet.tiptap h2,
+.library-page-cover__sheet.tiptap h3 {
+  margin: 0 0 0.5em;
+  line-height: 1.25;
+}

@@ -272,9 +272,9 @@ func (s *DocumentService) Publish(ctx context.Context, authorID, documentID uuid
 	_ = s.metadata.Upsert(ctx, &models.DocumentMetadata{
 		DocumentID:  doc.ID,
 		GenreID:     genre.ID,
-		Summary:     truncateSummary(plain, 280),
+		Summary:     DisplaySummary(readerHTML, 280),
 		ReadingTime: estimateReadingMinutes(readerHTML),
-		CoverURL:    strings.TrimSpace(input.CoverURL),
+		CoverURL:    ResolvePublishCoverURL(readerHTML, input.CoverURL),
 		AuthorName:  strings.TrimSpace(input.AuthorName),
 	})
 
@@ -663,14 +663,6 @@ func estimateReadingMinutes(content string) int {
 		return 1
 	}
 	return minutes
-}
-
-func truncateSummary(content string, max int) string {
-	content = strings.TrimSpace(content)
-	if len(content) <= max {
-		return content
-	}
-	return content[:max] + "..."
 }
 
 func normalizeTags(tags []string) []string {

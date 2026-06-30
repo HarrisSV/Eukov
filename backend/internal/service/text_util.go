@@ -56,3 +56,16 @@ func IsLikelyHTML(content string) bool {
 func SplitWords(content string) []string {
 	return strings.Fields(StripHTML(content))
 }
+
+func truncatePlainText(content string, max int) string {
+	content = strings.TrimSpace(content)
+	if max <= 0 || len(content) <= max {
+		return content
+	}
+	return content[:max] + "..."
+}
+
+// DisplaySummary strips markup and returns a short plain-text blurb for cards and lists.
+func DisplaySummary(content string, max int) string {
+	return truncatePlainText(StripHTML(content), max)
+}
